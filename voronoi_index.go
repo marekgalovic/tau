@@ -1,9 +1,10 @@
-// Implementation of K-Means||
+// Implementation of Parallel K-Means++
 package tau
 
 import (
     "fmt";
-    "math"
+    
+    "github.com/marekgalovic/tau/math";
 )
 
 type voronoiIndex struct {
@@ -23,11 +24,32 @@ func VoronoiIndex(size int, l int) Index {
 func (i *voronoiIndex) Build() {
     // Dummy k-means
     fmt.Println("Build")
+    i.initCentroids()
+    i.kMeans()
+}
 
-    for cid := 0; cid < i.l; cid++ {
-        i.centroids = append(i.centroids, randomVector(i.size))
+func (i *voronoiIndex) initCentroids() {
+    i.centroids = append(i.centroids, i.randomItem())
+
+    for j := 0; j < i.l - 1; j++ {
+        maxDistance := float32(-1.0)
+        var newCentroidId int
+
+        for iId, item := range i.items {
+            var totalItemDistance float32
+            for _, centroid := range i.centroids {
+                totalItemDistance += math.EuclideanDistance(item, centroid)
+            }
+            if totalItemDistance > maxDistance {
+                maxDistance = totalItemDistance
+                newCentroidId = iId
+            }
+        }
+        i.centroids = append(i.centroids, i.items[newCentroidId])
     }
+}
 
+func (i *voronoiIndex) kMeans() {
     var previousTotalCost float32
     for k := 0; k < 10000; k++ {
         newCentroids := make(map[int][]float32)
@@ -39,7 +61,7 @@ func (i *voronoiIndex) Build() {
             var assignedCentroid int
 
             for cid, centroid := range i.centroids {
-                distance := euclideanDistance(item, centroid)
+                distance := math.EuclideanDistance(item, centroid)
                 if distance < minDistance {
                     minDistance = distance
                     assignedCentroid = cid
@@ -54,7 +76,7 @@ func (i *voronoiIndex) Build() {
             newCentroidItemCounts[assignedCentroid] += 1
 
             for component_idx := 0; component_idx < i.size; component_idx++ {
-                newCentroids[assignedCentroid][component_idx] = newCentroids[assignedCentroid][component_idx] * (newCentroidItemCounts[assignedCentroid] - 1) / newCentroidItemCounts[assignedCentroid] + item[component_idx] / newCentroidItemCounts[assignedCentroid]
+                newCentroids[assignedCentroid][component_idx] = newCentroids[assignedCentroid][component_idx] * ((newCentroidItemCounts[assignedCentroid] - 1) / newCentroidItemCounts[assignedCentroid]) + (item[component_idx] / newCentroidItemCounts[assignedCentroid])
             }
         }
 
@@ -63,7 +85,7 @@ func (i *voronoiIndex) Build() {
         }
 
         fmt.Println(k, totalCost)
-        if math.Abs(float64(totalCost - previousTotalCost)) < 1e-1 {
+        if math.Abs(totalCost - previousTotalCost) < 1e-1 {
             fmt.Println("Converged")
             break
         }
@@ -71,10 +93,10 @@ func (i *voronoiIndex) Build() {
     }
 }
 
-func (i *voronoiIndex) Search() {
-
+func (i *voronoiIndex) Search(query []float32) (map[int]float32, error) {
+    return nil, nil
 }
 
 func(i *voronoiIndex) numCentroids() int {
-    return int(math.Trunc(math.Sqrt(float64(len(i.items)))))  
+    return math.Trunc(math.Sqrt(float32(len(i.items))))
 }

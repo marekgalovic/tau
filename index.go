@@ -6,8 +6,9 @@ import (
 )
 
 type Index interface {
-    Build() // Implementation specific
-    //Search([]float32) (map[int]float32, error) // Implementation specific
+    Build()  // Implementation specific
+    Search([]float32) (map[int]float32, error)  // Implementation specific
+    Len() int
     Add(int, []float32) error
     // Load(string) error
     // Save(string) error
@@ -23,6 +24,10 @@ func newBaseIndex(size int) baseIndex {
         size: size,
         items: make(map[int][]float32),
     }
+}
+
+func (i *baseIndex) Len() int {
+    return len(i.items)
 }
 
 func (i *baseIndex) Add(id int, vec []float32) error {
