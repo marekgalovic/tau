@@ -20,7 +20,7 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.NewBtreeIndex(d, "Euclidean", 1, 100)
+    index := tau.NewBtreeIndex(d, "Euclidean", 1, 64)
 
     startAt := time.Now()
     f, err := os.Open("./examples/data/dim256.txt")
@@ -42,7 +42,7 @@ func main() {
                 panic("NaN")
             }
         }
-        for k := 0; k < 1; k++ {
+        for k := 0; k < 10; k++ {
             index.Add(itemIdx, vec)
             itemIdx++
         }
@@ -89,6 +89,9 @@ func main() {
         }
     }
     fmt.Println("Top 10 accuracy:", present / 10.0)
+
+    fmt.Println(bfResults[:10])
+    fmt.Println(topTenBtreeIds)
 
     // index.Save("foo")
 }

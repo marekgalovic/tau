@@ -1,5 +1,9 @@
 package tau
 
+import (
+    "github.com/marekgalovic/tau/utils"
+)
+
 type SearchResultItem struct {
     Id int
     Distance float32
@@ -7,26 +11,13 @@ type SearchResultItem struct {
 
 type SearchResult []SearchResultItem
 
-func newSearchResult(index Index, query []float32, ids []int) SearchResult {
-    result := make(SearchResult, len(ids))
+func newSearchResult(index Index, query []float32, ids utils.Set) SearchResult {
+    result := make(SearchResult, 0, ids.Len())
 
-    for i, idx := range ids {
-        result[i] = SearchResultItem {
-            Id: idx,
-            Distance: index.ComputeDistance(index.Get(idx), query),
-        }
-    }
-
-    return result
-}
-
-func newSearchResultFromSet(index Index, query []float32, ids map[int]struct{}) SearchResult {
-    result := make(SearchResult, 0, len(ids))
-    
-    for idx, _ := range ids {
+    for idx := range ids.ToIterator() {
         result = append(result, SearchResultItem {
-            Id: idx,
-            Distance: index.ComputeDistance(index.Get(idx), query),
+            Id: idx.(int),
+            Distance: index.ComputeDistance(index.Get(idx.(int)), query),
         })
     }
 

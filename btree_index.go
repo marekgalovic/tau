@@ -9,13 +9,14 @@ import (
     "strings";
     // goMath "math";
 
-    "github.com/marekgalovic/tau/math"
+    "github.com/marekgalovic/tau/math";
+    "github.com/marekgalovic/tau/utils";
 )
 
 type btreeIndex struct {
     baseIndex
     numTrees int
-    maxLeafNodes int
+    maxLeafItems int
     trees []*btreeNode
 }
 
@@ -26,7 +27,7 @@ type btreeNode struct {
     rightNode *btreeNode
 }
 
-func NewBtreeIndex(size int, metric string, numTrees, maxLeafNodes int) Index {
+func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
     if numTrees < 1 {
         panic("Num trees has to be >= 1")
     }
@@ -34,7 +35,7 @@ func NewBtreeIndex(size int, metric string, numTrees, maxLeafNodes int) Index {
     return &btreeIndex {
         baseIndex: newBaseIndex(size, metric),
         numTrees: numTrees,
-        maxLeafNodes: maxLeafNodes,
+        maxLeafItems: maxLeafItems,
         trees: make([]*btreeNode, numTrees),
     }
 }
@@ -65,27 +66,27 @@ func (index *btreeIndex) Search(query []float32) SearchResult {
         go index.searchTree(tree, query, ctx, resultsChan, doneChan) 
     }
 
-    resultIds := make(map[int]struct{})
     var nDone int
+    resultIds := utils.NewSet()
 
     resultsLoop:
     for {
         select {
         case resultSlice := <- resultsChan:
             for _, id := range resultSlice {
-                resultIds[id] = struct{}{}
+                resultIds.Add(id)
             }
         case <- doneChan:
             nDone++
             if nDone == len(index.trees) {
                 break resultsLoop
             }
-        case <- time.After(5 * time.Second):
+        case <- time.After(1 * time.Second):
             break resultsLoop
         }
     }
 
-    result := newSearchResultFromSet(index, query, resultIds)
+    result := newSearchResult(index, query, resultIds)
     sort.Sort(result)
 
     return result
@@ -117,7 +118,9 @@ func (index *btreeIndex) Save(path string) error {
 }
 
 func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx context.Context, results chan []int, done chan struct{}) {
-    nodes := NewStack()
+    distanceThreshold := math.Sqrt(math.VectorLength(query))
+
+    nodes := utils.NewStack()
     nodes.Push(tree)
 
     for nodes.Len() > 0 {
@@ -134,8 +137,8 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx contex
         }
 
         distance := math.PointPlaneDistance(query, node.value)
-        
-        if math.Abs(distance) <= 0.1 {
+
+        if math.Abs(distance) <= distanceThreshold {
             nodes.Push(node.leftNode)
             nodes.Push(node.rightNode)
         } else if distance <= 0 {
@@ -185,7 +188,7 @@ func newBtree(index *btreeIndex) *btreeNode {
 }
 
 func newBtreeChild(index *btreeIndex, ids []int) *btreeNode {
-    if len(ids) <= index.maxLeafNodes {
+    if len(ids) <= index.maxLeafItems {
         return &btreeNode {
             itemIds: ids,
         }
