@@ -13,9 +13,9 @@ type voronoiIndex struct {
     centroids [][]float32
 }
 
-func VoronoiIndex(size int, l int) Index {
+func VoronoiIndex(size int, metric string, l int) Index {
     return &voronoiIndex{
-        baseIndex: newBaseIndex(size),
+        baseIndex: newBaseIndex(size, metric),
         l: l,
         centroids: make([][]float32, 0),
     }
@@ -26,6 +26,10 @@ func (i *voronoiIndex) Build() {
     fmt.Println("Build")
     i.initCentroids()
     i.kMeans()
+}
+
+func (index *voronoiIndex) Save(f string) error {
+    return nil
 }
 
 func (i *voronoiIndex) initCentroids() {
@@ -93,8 +97,8 @@ func (i *voronoiIndex) kMeans() {
     }
 }
 
-func (i *voronoiIndex) Search(query []float32) (map[int]float32, error) {
-    return nil, nil
+func (i *voronoiIndex) Search(query []float32) SearchResult {
+    return nil
 }
 
 func(i *voronoiIndex) numCentroids() int {

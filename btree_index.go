@@ -2,6 +2,12 @@
 package tau
 
 import (
+    "fmt";
+    "sort";
+    "time";
+    "context";
+    "strings";
+
     "github.com/marekgalovic/tau/math"
 )
 
@@ -19,13 +25,13 @@ type btree struct {
     rightNode *btree
 }
 
-func NewBtreeIndex(size, numTrees, maxLeafNodes int) Index {
+func NewBtreeIndex(size int, metric string, numTrees, maxLeafNodes int) Index {
     if numTrees < 1 {
         panic("Num trees has to be >= 1")
     }
 
     return &btreeIndex {
-        baseIndex: newBaseIndex(size),
+        baseIndex: newBaseIndex(size, metric),
         numTrees: numTrees,
         maxLeafNodes: maxLeafNodes,
         trees: make([]*btree, numTrees),
@@ -38,7 +44,7 @@ func (index *btreeIndex) Build() {
     for t := 0; t < index.numTrees; t++ {
         treeChans[t] = make(chan *btree)
         go func(treeChan chan *btree) {
-            treeChan <- newBtree(index, []int{}, 0)
+            treeChan <- newBtree(index)
         }(treeChans[t])
     }
 
@@ -48,11 +54,101 @@ func (index *btreeIndex) Build() {
     }
 }
 
-func (i *btreeIndex) Search(query []float32) (map[int]float32, error) {
-    return nil, nil
+func (index *btreeIndex) Search(query []float32) SearchResult {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    resultsChan := make(chan []int)
+    doneChan := make(chan struct{})
+    for _, tree := range index.trees {
+        go index.searchTree(tree, query, ctx, resultsChan, doneChan) 
+    }
+
+    resultIds := make(map[int]struct{})
+    var nDone int
+
+    resultsLoop:
+    for {
+        select {
+        case resultSlice := <- resultsChan:
+            for _, id := range resultSlice {
+                resultIds[id] = struct{}{}
+            }
+        case <- doneChan:
+            nDone++
+            if nDone == len(index.trees) {
+                break resultsLoop
+            }
+        case <- time.After(5 * time.Second):
+            break resultsLoop
+        }
+    }
+
+    result := newSearchResultFromSet(index, query, resultIds)
+    sort.Sort(result)
+
+    return result
 }
 
-func newBtree(index *btreeIndex, ids []int, dim int) *btree {
+func (index *btreeIndex) csValue(value []float32) string {
+    stringValue := make([]string, len(value))
+    for i, v := range value {
+        stringValue[i] = fmt.Sprintf("%.4f", v)
+    }
+    return strings.Join(stringValue, ",")
+}
+
+func (index *btreeIndex) printTree(tree *btree, level int) {
+    tabs := strings.Repeat("\t", level)
+    fmt.Println(tabs + index.csValue(tree.value))
+    if !tree.isLeaf() {
+        index.printTree(tree.leftNode, level + 1)
+        index.printTree(tree.rightNode, level + 1)
+    }
+}
+
+func (index *btreeIndex) Save(path string) error {
+    for treeIdx, tree := range index.trees {
+        fmt.Println("Tree:", treeIdx)
+        index.printTree(tree, 0)
+    }
+    return nil
+}
+
+func (index *btreeIndex) searchTree(tree *btree, query []float32, ctx context.Context, results chan []int, done chan struct{}) {
+    nodes := NewStack()
+    nodes.Push(tree)
+
+    for nodes.Len() > 0 {
+        select {
+        case <- ctx.Done():
+            return
+        default:
+        }
+
+        node := nodes.Pop().(*btree)
+        if node.isLeaf() {
+            results <- node.itemIds
+            continue
+        }
+
+        leftNodeDistance := index.ComputeDistance(node.leftNode.value, query)
+        rightNodeDistance := index.ComputeDistance(node.rightNode.value, query)
+
+        if math.Abs(leftNodeDistance - rightNodeDistance) < 1e-1 {
+            nodes.Push(node.leftNode)
+            nodes.Push(node.rightNode)
+        } else if leftNodeDistance < rightNodeDistance {
+            nodes.Push(node.leftNode)
+        } else {
+            nodes.Push(node.rightNode)
+        }
+    }
+
+    done <- struct{}{}
+}
+
+func newBtree(index *btreeIndex) *btree {
     // Worst O(n) to sample initial points
     aIdx, bIdx := sampleDistinctInts(len(index.items))
     var pointA, pointB []float32
@@ -69,14 +165,14 @@ func newBtree(index *btreeIndex, ids []int, dim int) *btree {
         aIdx--
         bIdx--
     }
-    split := pointA[0] + (pointB[0] - pointA[0]) / 2
+    split := math.EquidistantPlane(pointA, pointB)
 
     leftIds := make([]int, 0)
     rightIds := make([]int, 0)
     leftValue := make([]float32, index.size)
     rightValue := make([]float32, index.size)
     for idx, item := range index.items {
-        if item[0] <= split {
+        if math.PointPlaneDistance(item, split) <= 0 {
             leftIds = append(leftIds, idx)
             leftValue = math.VectorAdd(leftValue, item)
         } else {
@@ -90,13 +186,13 @@ func newBtree(index *btreeIndex, ids []int, dim int) *btree {
     rightValue = math.VectorScalarDivide(rightValue, float32(len(rightIds)))
 
     return &btree {
-        leftNode: newBtreeChild(index, leftValue, leftIds, 1),
-        rightNode: newBtreeChild(index, rightValue, rightIds, 1),
+        leftNode: newBtreeChild(index, leftValue, leftIds),
+        rightNode: newBtreeChild(index, rightValue, rightIds),
     }
 }
 
-func newBtreeChild(index *btreeIndex, value []float32, ids []int, dim int) *btree {
-    if len(ids) <= 100 {
+func newBtreeChild(index *btreeIndex, value []float32, ids []int) *btree {
+    if len(ids) <= index.maxLeafNodes {
         return &btree {
             value: value,
             itemIds: ids,
@@ -107,11 +203,7 @@ func newBtreeChild(index *btreeIndex, value []float32, ids []int, dim int) *btre
     aIdx, bIdx := sampleDistinctInts(len(ids))
     pointA := index.items[ids[aIdx]]
     pointB := index.items[ids[bIdx]]
-
-    if dim >= index.size {
-        dim = 0
-    }
-    split := pointA[dim] + (pointB[dim] - pointA[dim]) / 2
+    split := math.EquidistantPlane(pointA, pointB)
 
     leftIds := make([]int, 0)
     rightIds := make([]int, 0)
@@ -119,7 +211,7 @@ func newBtreeChild(index *btreeIndex, value []float32, ids []int, dim int) *btre
     rightValue := make([]float32, index.size)
     for idx := range ids {
         item := index.items[idx]
-        if item[dim] <= split {
+        if math.PointPlaneDistance(item, split) <= 0 {
             leftIds = append(leftIds, idx)
             leftValue = math.VectorAdd(leftValue, item)
         } else {
@@ -134,7 +226,11 @@ func newBtreeChild(index *btreeIndex, value []float32, ids []int, dim int) *btre
 
     return &btree {
         value: value,
-        leftNode: newBtreeChild(index, leftValue, leftIds, dim + 1),
-        rightNode: newBtreeChild(index, rightValue, rightIds, dim + 1),  
+        leftNode: newBtreeChild(index, leftValue, leftIds),
+        rightNode: newBtreeChild(index, rightValue, rightIds),  
     }
+}
+
+func (bt *btree) isLeaf() bool {
+    return (bt.leftNode == nil) && (bt.rightNode == nil)
 }

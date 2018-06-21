@@ -1,5 +1,7 @@
 package math
 
+var SupportedDistanceMetrics = []string{"Euclidean", "Manhattan", "Cosine"}
+
 func EuclideanDistance(a, b []float32) float32 {
     assertSameDim(&a, &b)
 

@@ -119,6 +119,33 @@ func VectorDot(a, b []float32) float32 {
     return dot
 }
 
+func EquidistantPlane(a, b []float32) []float32 {
+    assertSameDim(&a, &b)
+
+    normal := make([]float32, len(a))
+    var d float32
+    for i := 0; i < len(a); i++ {
+        normal[i] = (b[i] - a[i])
+        d += normal[i] * ((a[i] + b[i]) / 2)
+    }
+
+    return append(normal, d)
+}
+
+func PointPlaneDistance(point, plane []float32) float32 {
+    if len(point) != len(plane) - 1 {
+        panic("Plane vector must be have one more dimension than point.")
+    }
+
+    var dot, normalNorm float32
+    for i := 0; i < len(point); i++ {
+        dot += point[i] * plane[i]
+        normalNorm += Square(plane[i])
+    }
+
+    return (dot - plane[len(plane) - 1]) / Sqrt(normalNorm)
+}
+
 func RandomUniformVector(size int) []float32 {
     vec := make([]float32, size)
     for i := 0; i < size; i++ {
