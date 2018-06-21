@@ -8,7 +8,7 @@ import (
     "bufio";
     "bytes";
     "strconv";
-    "math/rand";
+    // "math/rand";
     goMath "math";
 
     "github.com/marekgalovic/tau";
@@ -20,7 +20,7 @@ func main() {
     // n := 100
     // rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.NewBtreeIndex(d, "Euclidean", 30, 128)
+    index := tau.NewBtreeIndex(d, "Euclidean", 1, 64)
 
     startAt := time.Now()
     f, err := os.Open("./examples/data/dim256.txt")
@@ -53,7 +53,7 @@ func main() {
     index.Build()
     fmt.Println("Build time:", index.Len(), time.Since(startAt))
 
-    query := index.Get(rand.Intn(index.Len()))
+    query := index.Get(0)
 
     startAt = time.Now()
     bfResults := make(tau.SearchResult, 0, index.Len())

@@ -133,13 +133,12 @@ func (index *btreeIndex) searchTree(tree *btree, query []float32, ctx context.Co
             continue
         }
 
-        leftNodeDistance := index.ComputeDistance(node.leftNode.value, query)
-        rightNodeDistance := index.ComputeDistance(node.rightNode.value, query)
-
-        if math.Abs(leftNodeDistance - rightNodeDistance) < 1e3 {
+        distance := math.PointPlaneDistance(query, node.value)
+        
+        if math.Abs(distance) <= 5 {
             nodes.Push(node.leftNode)
             nodes.Push(node.rightNode)
-        } else if leftNodeDistance < rightNodeDistance {
+        } else if distance <= 0 {
             nodes.Push(node.leftNode)
         } else {
             nodes.Push(node.rightNode)
@@ -170,36 +169,24 @@ func newBtree(index *btreeIndex) *btree {
 
     leftIds := make([]int, 0)
     rightIds := make([]int, 0)
-    leftValue := make([]float32, index.size)
-    rightValue := make([]float32, index.size)
     for idx, item := range index.items {
         if math.PointPlaneDistance(item, split) <= 0 {
             leftIds = append(leftIds, idx)
-            leftValue = math.VectorAdd(leftValue, item)
         } else {
             rightIds = append(rightIds, idx)
-            rightValue = math.VectorAdd(rightValue, item)
         }
     }
 
-    // Average node vectors
-    if len(leftIds) > 0 {
-        leftValue = math.VectorScalarDivide(leftValue, float32(len(leftIds)))    
-    }
-    if len(rightIds) > 0 {
-        rightValue = math.VectorScalarDivide(rightValue, float32(len(rightIds)))    
-    }
-
     return &btree {
-        leftNode: newBtreeChild(index, leftValue, leftIds),
-        rightNode: newBtreeChild(index, rightValue, rightIds),
+        value: split,
+        leftNode: newBtreeChild(index, leftIds),
+        rightNode: newBtreeChild(index, rightIds),
     }
 }
 
-func newBtreeChild(index *btreeIndex, value []float32, ids []int) *btree {
+func newBtreeChild(index *btreeIndex, ids []int) *btree {
     if len(ids) <= index.maxLeafNodes {
         return &btree {
-            value: value,
             itemIds: ids,
         }
     }
@@ -212,31 +199,19 @@ func newBtreeChild(index *btreeIndex, value []float32, ids []int) *btree {
 
     leftIds := make([]int, 0)
     rightIds := make([]int, 0)
-    leftValue := make([]float32, index.size)
-    rightValue := make([]float32, index.size)
     for idx := range ids {
         item := index.items[idx]
         if math.PointPlaneDistance(item, split) <= 0 {
             leftIds = append(leftIds, idx)
-            leftValue = math.VectorAdd(leftValue, item)
         } else {
             rightIds = append(rightIds, idx)
-            rightValue = math.VectorAdd(rightValue, item)
         }
     }
 
-    // Average node vectors
-    if len(leftIds) > 0 {
-        leftValue = math.VectorScalarDivide(leftValue, float32(len(leftIds)))    
-    }
-    if len(rightIds) > 0 {
-        rightValue = math.VectorScalarDivide(rightValue, float32(len(rightIds)))    
-    }
-
     return &btree {
-        value: value,
-        leftNode: newBtreeChild(index, leftValue, leftIds),
-        rightNode: newBtreeChild(index, rightValue, rightIds),  
+        value: split,
+        leftNode: newBtreeChild(index, leftIds),
+        rightNode: newBtreeChild(index, rightIds),  
     }
 }
 
