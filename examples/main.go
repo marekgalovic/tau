@@ -8,7 +8,7 @@ import (
     "bufio";
     "bytes";
     "strconv";
-    // "math/rand";
+    "math/rand";
     goMath "math";
 
     "github.com/marekgalovic/tau";
@@ -18,9 +18,9 @@ import (
 func main() {
     d := 256
     // n := 100
-    // rand.Seed(time.Now().Unix())
+    rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.NewBtreeIndex(d, "Euclidean", 1, 64)
+    index := tau.NewBtreeIndex(d, "Euclidean", 1, 100)
 
     startAt := time.Now()
     f, err := os.Open("./examples/data/dim256.txt")
@@ -42,7 +42,7 @@ func main() {
                 panic("NaN")
             }
         }
-        for k := 0; k < 10; k++ {
+        for k := 0; k < 1; k++ {
             index.Add(itemIdx, vec)
             itemIdx++
         }

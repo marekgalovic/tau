@@ -16,14 +16,14 @@ type btreeIndex struct {
     baseIndex
     numTrees int
     maxLeafNodes int
-    trees []*btree
+    trees []*btreeNode
 }
 
-type btree struct {
+type btreeNode struct {
     value []float32
     itemIds []int
-    leftNode *btree
-    rightNode *btree
+    leftNode *btreeNode
+    rightNode *btreeNode
 }
 
 func NewBtreeIndex(size int, metric string, numTrees, maxLeafNodes int) Index {
@@ -35,16 +35,16 @@ func NewBtreeIndex(size int, metric string, numTrees, maxLeafNodes int) Index {
         baseIndex: newBaseIndex(size, metric),
         numTrees: numTrees,
         maxLeafNodes: maxLeafNodes,
-        trees: make([]*btree, numTrees),
+        trees: make([]*btreeNode, numTrees),
     }
 }
 
 func (index *btreeIndex) Build() {
-    treeChans := make([]chan *btree, index.numTrees)
+    treeChans := make([]chan *btreeNode, index.numTrees)
 
     for t := 0; t < index.numTrees; t++ {
-        treeChans[t] = make(chan *btree)
-        go func(treeChan chan *btree) {
+        treeChans[t] = make(chan *btreeNode)
+        go func(treeChan chan *btreeNode) {
             treeChan <- newBtree(index)
         }(treeChans[t])
     }
@@ -99,7 +99,7 @@ func (index *btreeIndex) csValue(value []float32) string {
     return strings.Join(stringValue, ",")
 }
 
-func (index *btreeIndex) printTree(tree *btree, level int) {
+func (index *btreeIndex) printTree(tree *btreeNode, level int) {
     tabs := strings.Repeat("\t", level)
     fmt.Println(tabs + index.csValue(tree.value))
     if !tree.isLeaf() {
@@ -116,7 +116,7 @@ func (index *btreeIndex) Save(path string) error {
     return nil
 }
 
-func (index *btreeIndex) searchTree(tree *btree, query []float32, ctx context.Context, results chan []int, done chan struct{}) {
+func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx context.Context, results chan []int, done chan struct{}) {
     nodes := NewStack()
     nodes.Push(tree)
 
@@ -127,7 +127,7 @@ func (index *btreeIndex) searchTree(tree *btree, query []float32, ctx context.Co
         default:
         }
 
-        node := nodes.Pop().(*btree)
+        node := nodes.Pop().(*btreeNode)
         if node.isLeaf() {
             results <- node.itemIds
             continue
@@ -135,7 +135,7 @@ func (index *btreeIndex) searchTree(tree *btree, query []float32, ctx context.Co
 
         distance := math.PointPlaneDistance(query, node.value)
         
-        if math.Abs(distance) <= 5 {
+        if math.Abs(distance) <= 0.1 {
             nodes.Push(node.leftNode)
             nodes.Push(node.rightNode)
         } else if distance <= 0 {
@@ -148,7 +148,7 @@ func (index *btreeIndex) searchTree(tree *btree, query []float32, ctx context.Co
     done <- struct{}{}
 }
 
-func newBtree(index *btreeIndex) *btree {
+func newBtree(index *btreeIndex) *btreeNode {
     // Worst O(n) to sample initial points
     aIdx, bIdx := sampleDistinctInts(len(index.items))
     var pointA, pointB []float32
@@ -177,16 +177,16 @@ func newBtree(index *btreeIndex) *btree {
         }
     }
 
-    return &btree {
+    return &btreeNode {
         value: split,
         leftNode: newBtreeChild(index, leftIds),
         rightNode: newBtreeChild(index, rightIds),
     }
 }
 
-func newBtreeChild(index *btreeIndex, ids []int) *btree {
+func newBtreeChild(index *btreeIndex, ids []int) *btreeNode {
     if len(ids) <= index.maxLeafNodes {
-        return &btree {
+        return &btreeNode {
             itemIds: ids,
         }
     }
@@ -208,13 +208,13 @@ func newBtreeChild(index *btreeIndex, ids []int) *btree {
         }
     }
 
-    return &btree {
+    return &btreeNode {
         value: split,
         leftNode: newBtreeChild(index, leftIds),
         rightNode: newBtreeChild(index, rightIds),  
     }
 }
 
-func (bt *btree) isLeaf() bool {
+func (bt *btreeNode) isLeaf() bool {
     return (bt.leftNode == nil) && (bt.rightNode == nil)
 }
