@@ -119,6 +119,10 @@ func VectorDot(a, b []float32) float32 {
     return dot
 }
 
+func VectorLength(x []float32) float32 {
+    return Sqrt(VectorDot(x, x))
+}
+
 func EquidistantPlane(a, b []float32) []float32 {
     assertSameDim(&a, &b)
 

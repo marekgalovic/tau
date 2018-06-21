@@ -16,7 +16,7 @@ type Index interface {
     Get(int) []float32
     ComputeDistance([]float32, []float32) float32
     // Load(string) error
-    Save(string) error
+    // Save(string) error
 }
 
 type baseIndex struct {

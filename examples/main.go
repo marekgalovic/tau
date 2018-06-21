@@ -9,6 +9,7 @@ import (
     "bytes";
     "strconv";
     "math/rand";
+    goMath "math";
 
     "github.com/marekgalovic/tau";
     tauMath "github.com/marekgalovic/tau/math"
@@ -21,6 +22,7 @@ func main() {
     fmt.Println("Tau")
     index := tau.NewBtreeIndex(d, "Euclidean", 30, 128)
 
+    startAt := time.Now()
     f, err := os.Open("./examples/data/dim256.txt")
     if err != nil {
         panic(err)
@@ -36,14 +38,18 @@ func main() {
         for i, b := range bytes.Fields(lineBytes) {
             f, _ := strconv.ParseFloat(string(b), 32)
             vec[i] = float32(f)
+            if goMath.IsNaN(float64(vec[i])) {
+                panic("NaN")
+            }
         }
-        for k := 0; k < 1000; k++ {
+        for k := 0; k < 10; k++ {
             index.Add(itemIdx, vec)
             itemIdx++
         }
     }
+    fmt.Println("Data read time:", time.Since(startAt))
 
-    startAt := time.Now()
+    startAt = time.Now()
     index.Build()
     fmt.Println("Build time:", index.Len(), time.Since(startAt))
 

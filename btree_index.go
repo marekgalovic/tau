@@ -7,6 +7,7 @@ import (
     "time";
     "context";
     "strings";
+    // goMath "math";
 
     "github.com/marekgalovic/tau/math"
 )
@@ -135,7 +136,7 @@ func (index *btreeIndex) searchTree(tree *btree, query []float32, ctx context.Co
         leftNodeDistance := index.ComputeDistance(node.leftNode.value, query)
         rightNodeDistance := index.ComputeDistance(node.rightNode.value, query)
 
-        if math.Abs(leftNodeDistance - rightNodeDistance) < 1e-1 {
+        if math.Abs(leftNodeDistance - rightNodeDistance) < 1e3 {
             nodes.Push(node.leftNode)
             nodes.Push(node.rightNode)
         } else if leftNodeDistance < rightNodeDistance {
@@ -182,8 +183,12 @@ func newBtree(index *btreeIndex) *btree {
     }
 
     // Average node vectors
-    leftValue = math.VectorScalarDivide(leftValue, float32(len(leftIds)))
-    rightValue = math.VectorScalarDivide(rightValue, float32(len(rightIds)))
+    if len(leftIds) > 0 {
+        leftValue = math.VectorScalarDivide(leftValue, float32(len(leftIds)))    
+    }
+    if len(rightIds) > 0 {
+        rightValue = math.VectorScalarDivide(rightValue, float32(len(rightIds)))    
+    }
 
     return &btree {
         leftNode: newBtreeChild(index, leftValue, leftIds),
@@ -221,8 +226,12 @@ func newBtreeChild(index *btreeIndex, value []float32, ids []int) *btree {
     }
 
     // Average node vectors
-    leftValue = math.VectorScalarDivide(leftValue, float32(len(leftIds)))
-    rightValue = math.VectorScalarDivide(rightValue, float32(len(rightIds)))
+    if len(leftIds) > 0 {
+        leftValue = math.VectorScalarDivide(leftValue, float32(len(leftIds)))    
+    }
+    if len(rightIds) > 0 {
+        rightValue = math.VectorScalarDivide(rightValue, float32(len(rightIds)))    
+    }
 
     return &btree {
         value: value,
