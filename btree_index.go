@@ -5,6 +5,7 @@ import (
     "fmt";
     "sort";
     "time";
+    "sync";
     "context";
     "strings";
 
@@ -24,6 +25,12 @@ type btreeNode struct {
     itemIds []int
     leftNode *btreeNode
     rightNode *btreeNode
+}
+
+type btreeSplitArgs struct {
+    parent *btreeNode
+    leftIds []int
+    rightIds []int
 }
 
 func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
@@ -179,38 +186,39 @@ func newBtree(index *btreeIndex) *btreeNode {
         }
     }
 
-    root := &btreeNode {
-        value: split,
-    }
+    root := &btreeNode {value: split}
 
-    stack := utils.NewStack()
-    stack.Push(rightIds)
-    stack.Push(leftIds)
-    stack.Push(root)
+    stack := utils.NewThreadSafeStack()
+    stack.Push(&btreeSplitArgs{root, leftIds, rightIds})
 
     for stack.Len() > 0 {
-        parent := stack.Pop().(*btreeNode)
-        leftChildren := stack.Pop().([]int)
-        rightChildren := stack.Pop().([]int)
+        wg := &sync.WaitGroup{}
+        args := stack.Pop().(*btreeSplitArgs)
 
         var leftIds, rightIds []int
-        if len(leftChildren) > index.maxLeafItems {
-            parent.leftNode, leftIds, rightIds = splitSamples(index, leftChildren)
-            stack.Push(rightIds)
-            stack.Push(leftIds)
-            stack.Push(parent.leftNode)
+        if len(args.leftIds) > index.maxLeafItems {
+            wg.Add(1)
+            go func() {
+                defer wg.Done()
+                args.parent.leftNode, leftIds, rightIds = splitSamples(index, args.leftIds)
+                stack.Push(&btreeSplitArgs{args.parent.leftNode, leftIds, rightIds})
+            }()
         } else {
-            parent.leftNode = &btreeNode{itemIds: leftChildren}
+            args.parent.leftNode = &btreeNode{itemIds: args.leftIds}
         }
 
-        if len(rightChildren) > index.maxLeafItems {
-            parent.rightNode, leftIds, rightIds = splitSamples(index, rightChildren)
-            stack.Push(rightIds)
-            stack.Push(leftIds)
-            stack.Push(parent.rightNode)
+        if len(args.rightIds) > index.maxLeafItems {
+            wg.Add(1)
+            go func() {
+                defer wg.Done()
+                args.parent.rightNode, leftIds, rightIds = splitSamples(index, args.rightIds)
+                stack.Push(&btreeSplitArgs{args.parent.rightNode, leftIds, rightIds})
+            }()
         } else {
-            parent.rightNode = &btreeNode{itemIds: rightChildren}
+            args.parent.rightNode = &btreeNode{itemIds: args.rightIds}
         }
+        
+        wg.Wait()
     }
 
     return root

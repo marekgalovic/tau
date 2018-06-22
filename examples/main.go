@@ -29,7 +29,7 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.NewBtreeIndex(d, "Euclidean", 1, 64)
+    index := tau.NewBtreeIndex(d, "Euclidean", 1, 128)
 
     startAt := time.Now()
     f, err = os.Open("./examples/data/dim256.txt")
@@ -51,8 +51,9 @@ func main() {
                 panic("NaN")
             }
         }
-        for k := 0; k < 1000; k++ {
-            index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
+        for k := 0; k < 10; k++ {
+            index.Add(itemIdx, vec)
+            // index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
             itemIdx++
         }
     }

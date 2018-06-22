@@ -53,7 +53,6 @@ func (s *stack) Pop() interface{} {
 
 func NewThreadSafeStack() Stack {
     return &threadSafeStack {
-        stack: NewStack(),
         mutex: &sync.Mutex{},
     }
 }
@@ -62,6 +61,19 @@ func (s *threadSafeStack) Len() int {
     defer s.mutex.Unlock()
     s.mutex.Lock()
 
-    return s.Len()
+    return s.stack.Len()
+}
 
+func (s *threadSafeStack) Push(value interface{}) {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    s.stack.Push(value)
+}
+
+func (s *threadSafeStack) Pop() interface{} {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.stack.Pop()
 }
