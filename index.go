@@ -9,12 +9,12 @@ import (
 
 type Index interface {
     Build()  // Implementation specific
-    Search([]float32) SearchResult  // Implementation specific
+    Search(math.Vector) SearchResult  // Implementation specific
     Len() int
-    Items() map[int][]float32
-    Add(int, []float32) error
-    Get(int) []float32
-    ComputeDistance([]float32, []float32) float32
+    Items() map[int]math.Vector
+    Add(int, math.Vector) error
+    Get(int) math.Vector
+    ComputeDistance(math.Vector, math.Vector) float64
     // Load(string) error
     // Save(string) error
 }
@@ -22,14 +22,14 @@ type Index interface {
 type baseIndex struct {
     size int
     metric string
-    items map[int][]float32
+    items map[int]math.Vector
 }
 
 func newBaseIndex(size int, metric string) baseIndex {
     return baseIndex{
         size: size,
         metric: metric,
-        items: make(map[int][]float32),
+        items: make(map[int]math.Vector),
     }
 }
 
@@ -37,11 +37,11 @@ func (i *baseIndex) Len() int {
     return len(i.items)
 }
 
-func (i *baseIndex) Items() map[int][]float32 {
+func (i *baseIndex) Items() map[int]math.Vector {
     return i.items
 }
 
-func (i *baseIndex) Add(id int, vec []float32) error {
+func (i *baseIndex) Add(id int, vec math.Vector) error {
     if len(vec) != i.size {
         return fmt.Errorf("Vector with %d components does not match index size %d", len(vec), i.size)
     }
@@ -53,11 +53,11 @@ func (i *baseIndex) Add(id int, vec []float32) error {
     return nil
 }
 
-func (i *baseIndex) Get(id int) []float32 {
+func (i *baseIndex) Get(id int) math.Vector {
     return i.items[id]
 }
 
-func (i *baseIndex) ComputeDistance(a, b []float32) float32 {
+func (i *baseIndex) ComputeDistance(a, b math.Vector) float64 {
     if i.metric == "Euclidean" {
         return math.EuclideanDistance(a, b)
     }
@@ -70,7 +70,7 @@ func (i *baseIndex) ComputeDistance(a, b []float32) float32 {
     panic("Invalid metric")
 }
 
-func (i *baseIndex) randomItem() []float32 {
+func (i *baseIndex) randomItem() math.Vector {
     return i.items[rand.Intn(len(i.items))]
 }
 

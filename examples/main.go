@@ -43,17 +43,17 @@ func main() {
         if err != nil {
             break
         }
-        vec := make([]float32, 256)
+        vec := make([]float64, 256)
         for i, b := range bytes.Fields(lineBytes) {
-            f, _ := strconv.ParseFloat(string(b), 32)
-            vec[i] = float32(f)
-            if goMath.IsNaN(float64(vec[i])) {
+            f, _ := strconv.ParseFloat(string(b), 64)
+            vec[i] = f
+            if goMath.IsNaN(vec[i]) {
                 panic("NaN")
             }
         }
-        for k := 0; k < 10; k++ {
-            index.Add(itemIdx, vec)
-            // index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
+        for k := 0; k < 1000; k++ {
+            // index.Add(itemIdx, vec)
+            index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
             itemIdx++
         }
     }

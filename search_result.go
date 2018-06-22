@@ -6,12 +6,12 @@ import (
 
 type SearchResultItem struct {
     Id int
-    Distance float32
+    Distance float64
 }
 
 type SearchResult []SearchResultItem
 
-func newSearchResult(index Index, query []float32, ids utils.Set) SearchResult {
+func newSearchResult(index Index, query []float64, ids utils.Set) SearchResult {
     result := make(SearchResult, 0, ids.Len())
 
     for idx := range ids.ToIterator() {

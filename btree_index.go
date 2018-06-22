@@ -8,6 +8,7 @@ import (
     "sync";
     "context";
     "strings";
+    goMath "math";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
@@ -21,7 +22,7 @@ type btreeIndex struct {
 }
 
 type btreeNode struct {
-    value []float32
+    value math.Vector
     itemIds []int
     leftNode *btreeNode
     rightNode *btreeNode
@@ -62,7 +63,7 @@ func (index *btreeIndex) Build() {
     }
 }
 
-func (index *btreeIndex) Search(query []float32) SearchResult {
+func (index *btreeIndex) Search(query math.Vector) SearchResult {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
@@ -98,7 +99,7 @@ func (index *btreeIndex) Search(query []float32) SearchResult {
     return result
 }
 
-func (index *btreeIndex) csValue(value []float32) string {
+func (index *btreeIndex) csValue(value []float64) string {
     stringValue := make([]string, len(value))
     for i, v := range value {
         stringValue[i] = fmt.Sprintf("%.4f", v)
@@ -123,8 +124,8 @@ func (index *btreeIndex) Save(path string) error {
     return nil
 }
 
-func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx context.Context, results chan []int, done chan struct{}) {
-    distanceThreshold := math.Log(math.VectorLength(query)) / 10
+func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx context.Context, results chan []int, done chan struct{}) {
+    distanceThreshold := goMath.Log(math.Length(query)) / 10
 
     nodes := utils.NewStack()
     nodes.Push(tree)
@@ -143,7 +144,7 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx contex
         }
 
         distance := math.PointPlaneDistance(query, node.value)
-        if math.Abs(distance) <= distanceThreshold {
+        if goMath.Abs(distance) <= distanceThreshold {
             nodes.Push(node.leftNode)
             nodes.Push(node.rightNode)
         } else 
@@ -160,7 +161,7 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx contex
 func newBtree(index *btreeIndex) *btreeNode {
     // Worst O(n) to sample initial points
     pointIds := sampleDistinctInts(2, len(index.items))
-    var pointA, pointB []float32
+    var pointA, pointB math.Vector
     for _, point := range index.items {
         if pointIds[0] == 0 {
             pointA = point
