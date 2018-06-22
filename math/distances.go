@@ -9,6 +9,7 @@ func EuclideanDistance(a, b []float32) float32 {
     for i := 0; i < len(a); i++ {
         distance += Square(a[i] - b[i])
     }
+    
     return Sqrt(distance)
 }
 

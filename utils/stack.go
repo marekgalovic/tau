@@ -10,10 +10,14 @@ type Stack interface {
     Pop() interface{}
 }
 
-// Thread safe stack implemented as linked list.
 type stack struct {
     top *stackItem
     itemsCount int
+    mutex *sync.Mutex
+}
+
+type threadSafeStack struct {
+    stack
     mutex *sync.Mutex
 }
 
@@ -23,30 +27,19 @@ type stackItem struct {
 }
 
 func NewStack() Stack {
-    return &stack{
-        mutex: &sync.Mutex{},
-    }
+    return &stack{}
 }
 
 func (s *stack) Len() int {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-
     return s.itemsCount
 }
 
 func (s *stack) Push(value interface{}) {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-
     s.top = &stackItem{value, s.top}
     s.itemsCount++
 }
 
 func (s *stack) Pop() interface{} {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-
     if s.top == nil {
         panic("Empty stack")
     }
@@ -56,4 +49,19 @@ func (s *stack) Pop() interface{} {
     s.itemsCount--
 
     return value
+}
+
+func NewThreadSafeStack() Stack {
+    return &threadSafeStack {
+        stack: NewStack(),
+        mutex: &sync.Mutex{},
+    }
+}
+
+func (s *threadSafeStack) Len() int {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.Len()
+
 }

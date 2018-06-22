@@ -10,12 +10,21 @@ import (
     "strconv";
     "math/rand";
     goMath "math";
+    "runtime/pprof";
 
     "github.com/marekgalovic/tau";
     tauMath "github.com/marekgalovic/tau/math"
 )
 
 func main() {
+    f, err := os.Create("cpu.prof")
+    if err != nil {
+        panic(err)
+    }
+    if err = pprof.StartCPUProfile(f); err != nil {
+        panic(err)
+    }
+    defer pprof.StopCPUProfile()
     d := 256
     // n := 100
     rand.Seed(time.Now().Unix())
@@ -23,7 +32,7 @@ func main() {
     index := tau.NewBtreeIndex(d, "Euclidean", 1, 64)
 
     startAt := time.Now()
-    f, err := os.Open("./examples/data/dim256.txt")
+    f, err = os.Open("./examples/data/dim256.txt")
     if err != nil {
         panic(err)
     }
@@ -42,8 +51,8 @@ func main() {
                 panic("NaN")
             }
         }
-        for k := 0; k < 10; k++ {
-            index.Add(itemIdx, vec)
+        for k := 0; k < 1000; k++ {
+            index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
             itemIdx++
         }
     }

@@ -16,7 +16,7 @@ func Pow(x, power float32) float32 {
 }
 
 func Square(x float32) float32 {
-    return Pow(x, 2)
+    return x * x
 }
 
 func Sqrt(x float32) float32 {
@@ -119,6 +119,14 @@ func VectorDot(a, b []float32) float32 {
     return dot
 }
 
+func VectorSum(a []float32) float32 {
+    var sum float32
+    for i := 0; i < len(a); i++ {
+        sum += a[i]
+    }
+    return sum
+}
+
 func VectorLength(x []float32) float32 {
     return Sqrt(VectorDot(x, x))
 }
@@ -147,7 +155,7 @@ func PointPlaneDistance(point, plane []float32) float32 {
         normalNorm += Square(plane[i])
     }
 
-    return (dot - plane[len(plane) - 1]) / Sqrt(normalNorm)
+    return (dot - plane[len(plane) - 1]) / (Sqrt(normalNorm) + 1e-12)
 }
 
 func RandomUniformVector(size int) []float32 {

@@ -4,15 +4,18 @@ import (
     "math/rand";
 )
 
-func sampleDistinctInts(n int) (int, int) {
-    idsEqual := true
-    var aIdx, bIdx int
-
-    for idsEqual {
-        aIdx = rand.Intn(n)
-        bIdx = rand.Intn(n)
-        idsEqual = aIdx == bIdx
+func sampleDistinctInts(n, max int) []int {
+    result := make([]int, n)
+    result[0] = rand.Intn(max)
+    
+    i := 1
+    for i < n {
+        candidate := rand.Intn(max)
+        if candidate != result[i - 1] {
+            result[i] = candidate
+            i++
+        }
     }
 
-    return aIdx, bIdx
+    return result
 }

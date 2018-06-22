@@ -7,7 +7,6 @@ import (
     "time";
     "context";
     "strings";
-    // goMath "math";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
@@ -118,7 +117,7 @@ func (index *btreeIndex) Save(path string) error {
 }
 
 func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx context.Context, results chan []int, done chan struct{}) {
-    distanceThreshold := math.Sqrt(math.VectorLength(query))
+    distanceThreshold := math.Log(math.VectorLength(query)) / 10
 
     nodes := utils.NewStack()
     nodes.Push(tree)
@@ -137,11 +136,11 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx contex
         }
 
         distance := math.PointPlaneDistance(query, node.value)
-
         if math.Abs(distance) <= distanceThreshold {
             nodes.Push(node.leftNode)
             nodes.Push(node.rightNode)
-        } else if distance <= 0 {
+        } else 
+        if distance <= 0 {
             nodes.Push(node.leftNode)
         } else {
             nodes.Push(node.rightNode)
@@ -153,20 +152,20 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query []float32, ctx contex
 
 func newBtree(index *btreeIndex) *btreeNode {
     // Worst O(n) to sample initial points
-    aIdx, bIdx := sampleDistinctInts(len(index.items))
+    pointIds := sampleDistinctInts(2, len(index.items))
     var pointA, pointB []float32
     for _, point := range index.items {
-        if aIdx == 0 {
+        if pointIds[0] == 0 {
             pointA = point
         }
-        if bIdx == 0 {
+        if pointIds[1] == 0 {
             pointB = point
         }
-        if (aIdx <= 0) && (bIdx <= 0) {
+        if (pointIds[0] <= 0) && (pointIds[1] <= 0) {
             break
         }
-        aIdx--
-        bIdx--
+        pointIds[0]--
+        pointIds[1]--
     }
     split := math.EquidistantPlane(pointA, pointB)
 
@@ -180,24 +179,47 @@ func newBtree(index *btreeIndex) *btreeNode {
         }
     }
 
-    return &btreeNode {
+    root := &btreeNode {
         value: split,
-        leftNode: newBtreeChild(index, leftIds),
-        rightNode: newBtreeChild(index, rightIds),
     }
-}
 
-func newBtreeChild(index *btreeIndex, ids []int) *btreeNode {
-    if len(ids) <= index.maxLeafItems {
-        return &btreeNode {
-            itemIds: ids,
+    stack := utils.NewStack()
+    stack.Push(rightIds)
+    stack.Push(leftIds)
+    stack.Push(root)
+
+    for stack.Len() > 0 {
+        parent := stack.Pop().(*btreeNode)
+        leftChildren := stack.Pop().([]int)
+        rightChildren := stack.Pop().([]int)
+
+        var leftIds, rightIds []int
+        if len(leftChildren) > index.maxLeafItems {
+            parent.leftNode, leftIds, rightIds = splitSamples(index, leftChildren)
+            stack.Push(rightIds)
+            stack.Push(leftIds)
+            stack.Push(parent.leftNode)
+        } else {
+            parent.leftNode = &btreeNode{itemIds: leftChildren}
+        }
+
+        if len(rightChildren) > index.maxLeafItems {
+            parent.rightNode, leftIds, rightIds = splitSamples(index, rightChildren)
+            stack.Push(rightIds)
+            stack.Push(leftIds)
+            stack.Push(parent.rightNode)
+        } else {
+            parent.rightNode = &btreeNode{itemIds: rightChildren}
         }
     }
 
-    // Constant time sample
-    aIdx, bIdx := sampleDistinctInts(len(ids))
-    pointA := index.items[ids[aIdx]]
-    pointB := index.items[ids[bIdx]]
+    return root
+}
+
+func splitSamples(index *btreeIndex, ids []int) (*btreeNode, []int, []int) {
+    pointIds := sampleDistinctInts(2, len(ids))
+    pointA := index.items[ids[pointIds[0]]]
+    pointB := index.items[ids[pointIds[1]]]
     split := math.EquidistantPlane(pointA, pointB)
 
     leftIds := make([]int, 0)
@@ -211,11 +233,7 @@ func newBtreeChild(index *btreeIndex, ids []int) *btreeNode {
         }
     }
 
-    return &btreeNode {
-        value: split,
-        leftNode: newBtreeChild(index, leftIds),
-        rightNode: newBtreeChild(index, rightIds),  
-    }
+    return &btreeNode{value: split}, leftIds, rightIds
 }
 
 func (bt *btreeNode) isLeaf() bool {
