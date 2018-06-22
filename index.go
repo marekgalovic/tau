@@ -8,8 +8,8 @@ import (
 )
 
 type Index interface {
-    Build()  // Implementation specific
-    Search(math.Vector) SearchResult  // Implementation specific
+    Build()
+    Search(math.Vector) SearchResult
     Len() int
     Items() map[int]math.Vector
     Add(int, math.Vector) error

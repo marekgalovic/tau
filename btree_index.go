@@ -2,12 +2,10 @@
 package tau
 
 import (
-    "fmt";
     "sort";
     "time";
     "sync";
     "context";
-    "strings";
     goMath "math";
 
     "github.com/marekgalovic/tau/math";
@@ -99,31 +97,6 @@ func (index *btreeIndex) Search(query math.Vector) SearchResult {
     return result
 }
 
-func (index *btreeIndex) csValue(value []float64) string {
-    stringValue := make([]string, len(value))
-    for i, v := range value {
-        stringValue[i] = fmt.Sprintf("%.4f", v)
-    }
-    return strings.Join(stringValue, ",")
-}
-
-func (index *btreeIndex) printTree(tree *btreeNode, level int) {
-    tabs := strings.Repeat("\t", level)
-    fmt.Println(tabs + index.csValue(tree.value))
-    if !tree.isLeaf() {
-        index.printTree(tree.leftNode, level + 1)
-        index.printTree(tree.rightNode, level + 1)
-    }
-}
-
-func (index *btreeIndex) Save(path string) error {
-    for treeIdx, tree := range index.trees {
-        fmt.Println("Tree:", treeIdx)
-        index.printTree(tree, 0)
-    }
-    return nil
-}
-
 func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx context.Context, results chan []int, done chan struct{}) {
     distanceThreshold := goMath.Log(math.Length(query)) / 10
 
@@ -160,7 +133,7 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx cont
 
 func newBtree(index *btreeIndex) *btreeNode {
     // Worst O(n) to sample initial points
-    pointIds := sampleDistinctInts(2, len(index.items))
+    pointIds := math.RandomDistinctInts(2, len(index.items))
     var pointA, pointB math.Vector
     for _, point := range index.items {
         if pointIds[0] == 0 {
@@ -226,7 +199,7 @@ func newBtree(index *btreeIndex) *btreeNode {
 }
 
 func splitSamples(index *btreeIndex, ids []int) (*btreeNode, []int, []int) {
-    pointIds := sampleDistinctInts(2, len(ids))
+    pointIds := math.RandomDistinctInts(2, len(ids))
     pointA := index.items[ids[pointIds[0]]]
     pointB := index.items[ids[pointIds[1]]]
     split := math.EquidistantPlane(pointA, pointB)

@@ -4,10 +4,14 @@ import (
     goMath "math";
 )
 
-const (
-    ParallelThreshold = 100000
-    NumRoutines = 4
+var (
+    parallelThreshold = 100000
+    numRoutines = 4
 )
+
+func SetParallelThreshold(threshold int) { parallelThreshold = threshold }
+
+func SetNumRoutines(n int) { numRoutines = n }
 
 func Square(x float64) float64 {
     return x * x
