@@ -1,33 +1,29 @@
 package math
 
-import (
-    goMath "math";
-)
+type Vector []Float
 
-type Vector []float64
-
-func Dot(a, b Vector) float64 {
+func Dot(a, b Vector) Float {
     assertSameDim(&a, &b)
 
-    if len(a) >= parallelThreshold {
-        return parallelReduce(a, b, numRoutines, 1, func(a, b []float64, result []chan float64) {
-            result[0] <-dot(a, b)
-        })[0]
-    }
+    // if len(a) >= parallelThreshold {
+    //     return parallelReduce(a, b, numRoutines, 1, func(a, b []float64, result []chan float64) {
+    //         result[0] <-dot(a, b)
+    //     })[0]
+    // }
     
     return dot(a, b)
 }
 
-func dot(a, b []float64) float64 {
-    var dot float64
+func dot(a, b []Float) Float {
+    var dot Float
     for i := 0; i < len(a); i++ {
         dot += a[i] * b[i]
     }
     return dot
 }
 
-func Length(a Vector) float64 {
-    return goMath.Sqrt(Dot(a, a))
+func Length(a Vector) Float {
+    return Sqrt(Dot(a, a))
 }
 
 func VectorAdd(a, b Vector) Vector {

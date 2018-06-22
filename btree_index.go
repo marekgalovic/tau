@@ -6,7 +6,6 @@ import (
     "time";
     "sync";
     "context";
-    goMath "math";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
@@ -41,11 +40,11 @@ func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
         baseIndex: newBaseIndex(size, metric),
         numTrees: numTrees,
         maxLeafItems: maxLeafItems,
-        trees: make([]*btreeNode, numTrees),
     }
 }
 
 func (index *btreeIndex) Build() {
+    index.trees = make([]*btreeNode, index.numTrees)
     treeChans := make([]chan *btreeNode, index.numTrees)
 
     for t := 0; t < index.numTrees; t++ {
@@ -98,7 +97,7 @@ func (index *btreeIndex) Search(query math.Vector) SearchResult {
 }
 
 func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx context.Context, results chan []int, done chan struct{}) {
-    distanceThreshold := goMath.Log(math.Length(query)) / 10
+    distanceThreshold := math.Log(math.Length(query)) / 10
 
     nodes := utils.NewStack()
     nodes.Push(tree)
@@ -117,7 +116,7 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx cont
         }
 
         distance := math.PointPlaneDistance(query, node.value)
-        if goMath.Abs(distance) <= distanceThreshold {
+        if math.Abs(distance) <= distanceThreshold {
             nodes.Push(node.leftNode)
             nodes.Push(node.rightNode)
         } else 
@@ -204,14 +203,12 @@ func splitSamples(index *btreeIndex, ids []int) (*btreeNode, []int, []int) {
     pointB := index.items[ids[pointIds[1]]]
     split := math.EquidistantPlane(pointA, pointB)
 
-    leftIds := make([]int, 0)
-    rightIds := make([]int, 0)
-    for idx := range ids {
-        item := index.items[idx]
-        if math.PointPlaneDistance(item, split) <= 0 {
-            leftIds = append(leftIds, idx)
+    var leftIds, rightIds []int
+    for _, id := range ids {
+        if math.PointPlaneDistance(index.Get(id), split) <= 0 {
+            leftIds = append(leftIds, id)
         } else {
-            rightIds = append(rightIds, idx)
+            rightIds = append(rightIds, id)
         }
     }
 

@@ -6,7 +6,7 @@ func assertSameDim(i, j *Vector) {
     }   
 }
 
-func parallelReduce(a, b Vector, nRoutines, nResults int, reduceFunc func([]float64, []float64, []chan float64)) []float64 {
+func parallelReduce(a, b []float64, nRoutines, nResults int, reduceFunc func([]float64, []float64, []chan float64)) []float64 {
     result := make([]chan float64, nResults)
     for i := 0; i < nResults; i++ {
         result[i] = make(chan float64)

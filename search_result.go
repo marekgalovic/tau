@@ -1,17 +1,18 @@
 package tau
 
 import (
+    "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils"
 )
 
 type SearchResultItem struct {
     Id int
-    Distance float64
+    Distance math.Float
 }
 
 type SearchResult []SearchResultItem
 
-func newSearchResult(index Index, query []float64, ids utils.Set) SearchResult {
+func newSearchResult(index Index, query math.Vector, ids utils.Set) SearchResult {
     result := make(SearchResult, 0, ids.Len())
 
     for idx := range ids.ToIterator() {

@@ -10,11 +10,12 @@ import (
 type Index interface {
     Build()
     Search(math.Vector) SearchResult
+    ByteSize() int
     Len() int
     Items() map[int]math.Vector
     Add(int, math.Vector) error
     Get(int) math.Vector
-    ComputeDistance(math.Vector, math.Vector) float64
+    ComputeDistance(math.Vector, math.Vector) math.Float
     // Load(string) error
     // Save(string) error
 }
@@ -31,6 +32,10 @@ func newBaseIndex(size int, metric string) baseIndex {
         metric: metric,
         items: make(map[int]math.Vector),
     }
+}
+
+func (i *baseIndex) ByteSize() int {
+    return 8 * i.size * len(i.items)
 }
 
 func (i *baseIndex) Len() int {
@@ -57,7 +62,7 @@ func (i *baseIndex) Get(id int) math.Vector {
     return i.items[id]
 }
 
-func (i *baseIndex) ComputeDistance(a, b math.Vector) float64 {
+func (i *baseIndex) ComputeDistance(a, b math.Vector) math.Float {
     if i.metric == "Euclidean" {
         return math.EuclideanDistance(a, b)
     }

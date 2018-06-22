@@ -29,7 +29,7 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.NewBtreeIndex(d, "Euclidean", 1, 128)
+    index := tau.NewBtreeIndex(d, "Euclidean", 15, 64)
 
     startAt := time.Now()
     f, err = os.Open("./examples/data/dim256.txt")
@@ -43,25 +43,32 @@ func main() {
         if err != nil {
             break
         }
-        vec := make([]float64, 256)
+        vec := make([]tauMath.Float, 256)
         for i, b := range bytes.Fields(lineBytes) {
             f, _ := strconv.ParseFloat(string(b), 64)
-            vec[i] = f
-            if goMath.IsNaN(vec[i]) {
+            vec[i] = tauMath.Float(f)
+            if goMath.IsNaN(f) {
                 panic("NaN")
             }
         }
-        for k := 0; k < 1000; k++ {
+        for k := 0; k < 10; k++ {
             // index.Add(itemIdx, vec)
             index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
             itemIdx++
         }
+        // fmt.Println("Index size:", index.ByteSize() / 1024 / 1024)
     }
     fmt.Println("Data read time:", time.Since(startAt))
 
-    startAt = time.Now()
-    index.Build()
-    fmt.Println("Build time:", index.Len(), time.Since(startAt))
+    var totalDuration time.Duration
+    for i := 0; i < 10; i++ {
+        startAt = time.Now()
+        index.Build()
+        d := time.Since(startAt)
+        // fmt.Println("Build time:", index.Len(), d)
+        totalDuration += d
+    }
+    fmt.Println("Avg build duration", totalDuration / 10)
 
     query := index.Get(0)
 
@@ -80,9 +87,16 @@ func main() {
     sort.Sort(bfResults)
     fmt.Println("Brute force search time", time.Since(startAt))
 
-    startAt = time.Now()
-    result := index.Search(query)
-    fmt.Println("Btree search time:", time.Since(startAt))
+    var totalSearchDuration time.Duration
+    var result tau.SearchResult
+    for i := 0; i < 1000; i++ {
+        startAt = time.Now()
+        result = index.Search(query)
+        d := time.Since(startAt)
+        // fmt.Println("Btree search time:", d)
+        totalSearchDuration += d
+    }
+    fmt.Println("Avg search time:", totalSearchDuration / 1000)
     fmt.Println("Returned results:", len(result))
 
     topTenBtreeIds := make(map[int]struct{})

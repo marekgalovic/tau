@@ -22,7 +22,7 @@ func RandomDistinctInts(n, max int) []int {
 func RandomUniformVector(size int) Vector {
     vec := make(Vector, size)
     for i := 0; i < size; i++ {
-        vec[i] = rand.Float64()
+        vec[i] = Float(rand.Float32())
     }
     return vec
 }
@@ -30,15 +30,15 @@ func RandomUniformVector(size int) Vector {
 func RandomStandardNormalVector(size int) Vector {
     vec := make(Vector, size)
     for i := 0; i < size; i++ {
-        vec[i] = rand.NormFloat64()
+        vec[i] = Float(rand.NormFloat64())
     }
     return vec
 }
 
-func RandomNormalVector(size int, mu, sigma float64) Vector {
+func RandomNormalVector(size int, mu, sigma Float) Vector {
     vec := make(Vector, size)
     for i := 0; i < size; i++ {
-        vec[i] = rand.NormFloat64() * sigma + mu
+        vec[i] = Float(rand.NormFloat64()) * sigma + mu
     }
     return vec 
 }
