@@ -29,7 +29,7 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.NewBtreeIndex(d, "Euclidean", 15, 64)
+    index := tau.NewBtreeIndex(d, "Euclidean", 5, 128)
 
     startAt := time.Now()
     f, err = os.Open("./examples/data/dim256.txt")

@@ -79,6 +79,9 @@ func (index *btreeIndex) Search(query math.Vector) SearchResult {
         case resultSlice := <- resultsChan:
             for _, id := range resultSlice {
                 resultIds.Add(id)
+                if resultIds.Len() == index.numTrees * index.maxLeafItems {
+                    break resultsLoop
+                }
             }
         case <- doneChan:
             nDone++
@@ -116,13 +119,16 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx cont
         }
 
         distance := math.PointPlaneDistance(query, node.value)
-        if math.Abs(distance) <= distanceThreshold {
-            nodes.Push(node.leftNode)
-            nodes.Push(node.rightNode)
-        } else 
+        pushBoth := math.Abs(distance) <= distanceThreshold
         if distance <= 0 {
+            if pushBoth {
+                nodes.Push(node.rightNode)
+            }
             nodes.Push(node.leftNode)
         } else {
+            if pushBoth {
+                nodes.Push(node.leftNode)
+            }
             nodes.Push(node.rightNode)
         }
     }
@@ -163,7 +169,6 @@ func newBtree(index *btreeIndex) *btreeNode {
 
     stack := utils.NewThreadSafeStack()
     stack.Push(&btreeSplitArgs{root, leftIds, rightIds})
-
     for stack.Len() > 0 {
         wg := &sync.WaitGroup{}
         args := stack.Pop().(*btreeSplitArgs)
