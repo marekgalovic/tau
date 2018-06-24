@@ -15,7 +15,7 @@ func SetNumRoutines(n int) { numRoutines = n }
 
 type Float float32
 
-const MaxFloat = float32(goMath.MaxFloat32)
+const MaxFloat = Float(goMath.MaxFloat32)
 
 func Abs(x Float) Float {
     return Float(goMath.Abs(float64(x)))

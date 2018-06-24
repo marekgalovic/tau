@@ -19,10 +19,14 @@ func RandomDistinctInts(n, max int) []int {
     return result
 }
 
+func RandomUniform() Float {
+    return Float(rand.Float32())
+}
+
 func RandomUniformVector(size int) Vector {
     vec := make(Vector, size)
     for i := 0; i < size; i++ {
-        vec[i] = Float(rand.Float32())
+        vec[i] = RandomUniform()
     }
     return vec
 }
