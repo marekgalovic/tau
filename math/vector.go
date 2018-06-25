@@ -17,6 +17,18 @@ func (v Vector) Sort() Vector {
     return v
 }
 
+func ZerosVector(size int) Vector {
+    return make(Vector, size)
+}
+
+func OnesVector(size int) Vector {
+    vector := make(Vector, size)
+    for i := 0; i < size; i++ {
+        vector[i] = 1
+    }
+    return vector
+}
+
 func Dot(a, b Vector) Float {
     var dot Float
     for i := 0; i < len(a); i++ {

@@ -59,6 +59,7 @@ func main() {
         // fmt.Println("Index size:", index.ByteSize() / 1024 / 1024)
     }
     fmt.Println("Data read time:", time.Since(startAt))
+    fmt.Println("Item:", index.Len())
 
     var totalDuration time.Duration
     for i := 0; i < 1; i++ {

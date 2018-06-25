@@ -5,6 +5,7 @@ import (
     "sort";
     "sync";
     "runtime";
+    "math/rand";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
@@ -12,22 +13,26 @@ import (
 
 type voronoiIndex struct {
     baseIndex
-    itemIds []int
-    cost math.Float
-    centroids []math.Vector
-    centroidAssignments [][]int
+    root *voronoiCell
 }
 
-type itemCentroidDistance struct {
+type voronoiCell struct {
+    centroid math.Vector
+    cost math.Float
+    itemIds []int
+    children []*voronoiCell
+}
+
+type itemCellDistance struct {
     itemId int
-    centroidId int
+    cellId int
     distance math.Float
 }
 
 func VoronoiIndex(size int, metric string) Index {
     return &voronoiIndex {
         baseIndex: newBaseIndex(size, metric),
-        centroids: make([]math.Vector, 0),
+        root: &voronoiCell{},
     }
 }
 
@@ -36,19 +41,19 @@ func (index *voronoiIndex) Add(id int, value math.Vector) error {
         return err
     }
 
-    index.itemIds = append(index.itemIds, id)
+    index.root.itemIds = append(index.root.itemIds, id)
     return nil
 }
 
 func (index *voronoiIndex) Build() {
-    index.initializeCentroids()
-    index.lloyd()
+    initialCells := index.initializeCells(index.root, index.numCentroids())
+    index.root.children = index.kMeans(index.root, initialCells)
 }
 
 func (index *voronoiIndex) Search(query math.Vector) SearchResult {
-    centroidId, _ := index.closestCentroid(query)
+    cellId, _ := index.closestCell(query, index.root.children)
     ids := utils.NewSet()
-    for _, id := range index.centroidAssignments[centroidId] {
+    for _, id := range index.root.children[cellId].itemIds {
         ids.Add(id)
     }
 
@@ -56,104 +61,110 @@ func (index *voronoiIndex) Search(query math.Vector) SearchResult {
     sort.Sort(result)
 
     return result
+    return nil
 }
 
 func (index *voronoiIndex) numCentroids() int {
-    return int(index.Len() / 1000)
+    return int(math.Min(math.Float(index.Len() / 1000), 100))
 }
 
-func (index *voronoiIndex) initialCentroid() math.Vector {
-    var result math.Vector
-    for _, vec := range index.items {
-        result = vec
-        break
+func (index *voronoiIndex) initialCell(ids []int) *voronoiCell {
+    itemId := ids[rand.Intn(len(ids))]
+
+    return &voronoiCell{centroid: index.items[itemId]}
+}
+
+func (index *voronoiIndex) initializeCells(parent *voronoiCell, k int) []*voronoiCell {
+    // K-means++ centroid initialization
+    cells := []*voronoiCell {
+        index.initialCell(parent.itemIds),
     }
-    return result
-}
 
-func (index *voronoiIndex) initializeCentroids() {
-    // K-Means++ initialization
-    distances := make(math.Vector, len(index.items))
-    distanceIds := make([]int, len(index.items))
-    for len(index.centroids) < index.numCentroids() {
-        i := 0
-        var total math.Float
-        for icDistance := range index.itemCentroidDistances() {
-            distances[i] = icDistance.distance
-            distanceIds[i] = icDistance.itemId
-            total += icDistance.distance
-            i++
+    distances := make([]*itemCellDistance, len(parent.itemIds))
+    for i := 0; i < k; i++ {
+        j := 0
+        var cumulativeDistance math.Float
+        for icDistance := range index.itemCellDistances(parent.itemIds, cells) {
+            distances[j] = icDistance
+            cumulativeDistance += icDistance.distance
+            j++
         }
 
-        i = 0
-        target := math.RandomUniform() * total
-        for total = distances[0]; total < target; total += distances[i] {
-            i++
+        j = 0
+        target := math.RandomUniform() * cumulativeDistance
+        for sum := distances[0].distance; sum < target; sum += distances[j].distance {
+            j++
         }
-        
-        index.centroids = append(index.centroids, index.items[distanceIds[i]])
+        cells = append(cells, &voronoiCell{centroid: index.Get(distances[j].itemId)})
     }
+    
+    return cells
 }
 
-func (index *voronoiIndex) lloyd() {
+func (index *voronoiIndex) kMeans(parent *voronoiCell, cells []*voronoiCell) []*voronoiCell {
+    // Lloyd's iteration
+    newCentroids := make([]math.Vector, len(cells))
+
     var previousCost math.Float
     for i := 0; i < 100; i++ {
-        index.centroidAssignments = make([][]int, index.numCentroids())
-        newCentroids := make([]math.Vector, index.numCentroids())
-        index.cost = 0
-
-        for icDistance := range index.itemCentroidDistances() {
-            if len(newCentroids[icDistance.centroidId]) == 0 {
-                newCentroids[icDistance.centroidId] = make(math.Vector, index.size)
-            }
-
-            index.cost += icDistance.distance
-            newCentroids[icDistance.centroidId] = math.VectorAdd(newCentroids[icDistance.centroidId], index.items[icDistance.itemId])
-            index.centroidAssignments[icDistance.centroidId] = append(index.centroidAssignments[icDistance.centroidId], icDistance.itemId)
+        for j, _ := range cells {
+            cells[j].itemIds = make([]int, 0)
+            newCentroids[j] = make(math.Vector, index.size)
         }
 
-        for centroidId, centroid := range newCentroids {
-            index.centroids[centroidId] = math.VectorScalarDivide(centroid, math.Float(len(index.centroidAssignments[centroidId])))
+        var cost math.Float
+        for icDistance := range index.itemCellDistances(parent.itemIds, cells) {
+            cells[icDistance.cellId].cost += icDistance.distance
+            cells[icDistance.cellId].itemIds = append(cells[icDistance.cellId].itemIds, icDistance.itemId)
+            newCentroids[icDistance.cellId] = math.VectorAdd(newCentroids[icDistance.cellId], index.Get(icDistance.itemId))
+
+            cost += icDistance.distance
         }
 
-        if math.Abs(index.cost - previousCost) < 10 {
+        for cellId, centroid := range newCentroids {
+            cells[cellId].centroid = math.VectorScalarDivide(centroid, math.Float(len(cells[cellId].itemIds)))
+        }
+
+        if math.Abs(cost - previousCost) < 10 {
             break
         }
-        previousCost = index.cost
+        previousCost = cost
     }
+
+    return cells
 }
 
-func (index *voronoiIndex) closestCentroid(item math.Vector) (int, math.Float) {
+func (index *voronoiIndex) closestCell(item math.Vector, cells []*voronoiCell) (int, math.Float) {
     minDistance := math.MaxFloat
     var id int
-    for centroidId, centroid := range index.centroids {
-        if itemCentroidDistance := math.EuclideanDistance(item, centroid); itemCentroidDistance < minDistance {
-            minDistance = itemCentroidDistance
-            id = centroidId
+    for cellId, cell := range cells {
+        if distance := math.EuclideanDistance(item, cell.centroid); distance < minDistance {
+            minDistance = distance
+            id = cellId
         }
     }
     return id, minDistance
 }
 
-func (index *voronoiIndex) itemCentroidDistances() <-chan *itemCentroidDistance {
+func (index *voronoiIndex) itemCellDistances(ids []int, cells []*voronoiCell) <-chan *itemCellDistance {
     wg := &sync.WaitGroup{}
-    results := make(chan *itemCentroidDistance)
+    results := make(chan *itemCellDistance)
     numThreads := runtime.NumCPU()
-    sliceSize := int(index.Len() / numThreads)
+    sliceSize := int(len(ids) / numThreads)
 
     for t := 0; t < numThreads; t++ {
         lb := t * sliceSize
         ub := lb + sliceSize
         if t == numThreads - 1 {
-            ub += index.Len() - (numThreads * sliceSize)
+            ub += len(ids) - (numThreads * sliceSize)
         }
 
         wg.Add(1)
         go func(lb, ub int) {
             defer wg.Done()
-            for _, itemId := range index.itemIds[lb:ub] {
-                centroidId, distance := index.closestCentroid(index.items[itemId])
-                results <- &itemCentroidDistance{itemId, centroidId, distance}
+            for _, itemId := range ids[lb:ub] {
+                cellId, distance := index.closestCell(index.items[itemId], cells)
+                results <- &itemCellDistance{itemId, cellId, distance}
             }
         }(lb, ub)
     }

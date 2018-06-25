@@ -29,7 +29,7 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.NewBtreeIndex(d, "Euclidean", 5, 128)
+    index := tau.NewBtreeIndex(d, "Euclidean", 15, 256)
 
     startAt := time.Now()
     f, err = os.Open("./examples/data/dim256.txt")
@@ -51,9 +51,9 @@ func main() {
                 panic("NaN")
             }
         }
-        for k := 0; k < 10; k++ {
+        for k := 0; k < 1000; k++ {
             // index.Add(itemIdx, vec)
-            index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
+            index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomNormalVector(d, 0, 1)))
             itemIdx++
         }
         // fmt.Println("Index size:", index.ByteSize() / 1024 / 1024)
@@ -61,14 +61,14 @@ func main() {
     fmt.Println("Data read time:", time.Since(startAt))
 
     var totalDuration time.Duration
-    for i := 0; i < 10; i++ {
+    for i := 0; i < 1; i++ {
         startAt = time.Now()
         index.Build()
         d := time.Since(startAt)
         // fmt.Println("Build time:", index.Len(), d)
         totalDuration += d
     }
-    fmt.Println("Avg build duration", totalDuration / 10)
+    fmt.Println("Avg build duration", totalDuration / 1)
 
     query := index.Get(0)
 
