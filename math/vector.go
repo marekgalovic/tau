@@ -1,5 +1,9 @@
 package math
 
+import (
+    "sort";
+)
+
 type Vector []Float
 
 func (v Vector) Len() int { return len(v) }
@@ -7,6 +11,11 @@ func (v Vector) Len() int { return len(v) }
 func (v Vector) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
 
 func (v Vector) Less(i, j int) bool { return v[i] < v[j] }
+
+func (v Vector) Sort() Vector {
+    sort.Sort(v)
+    return v
+}
 
 func Dot(a, b Vector) Float {
     var dot Float

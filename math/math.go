@@ -42,6 +42,26 @@ func Trunc(x Float) int {
     return int(goMath.Trunc(float64(x)))
 }
 
+func Min(values ...Float) Float {
+    min := MaxFloat
+    for _, value := range values {
+        if value < min {
+            min = value
+        }
+    }
+    return min
+}
+
+func Max(values ...Float) Float {
+    max := -MaxFloat
+    for _, value := range values {
+        if value > max {
+            max = value
+        }
+    }
+    return max
+}
+
 func EquidistantPlane(a, b Vector) Vector {
     assertSameDim(&a, &b)
 

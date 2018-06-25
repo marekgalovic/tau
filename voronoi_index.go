@@ -72,9 +72,7 @@ func (index *voronoiIndex) initialCentroid() math.Vector {
 }
 
 func (index *voronoiIndex) initializeCentroids() {
-    // K-means++ centroid initialization
-    index.centroids = append(index.centroids, index.initialCentroid())
-
+    // K-Means++ initialization
     distances := make(math.Vector, len(index.items))
     distanceIds := make([]int, len(index.items))
     for len(index.centroids) < index.numCentroids() {
@@ -133,7 +131,7 @@ func (index *voronoiIndex) closestCentroid(item math.Vector) (int, math.Float) {
             minDistance = itemCentroidDistance
             id = centroidId
         }
-    }  
+    }
     return id, minDistance
 }
 
