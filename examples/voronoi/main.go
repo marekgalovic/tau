@@ -29,7 +29,7 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.VoronoiIndex(d, "Euclidean")
+    index := tau.VoronoiIndex(d, "Euclidean", 10, 2500)
 
     startAt := time.Now()
     f, err = os.Open("./examples/data/dim256.txt")

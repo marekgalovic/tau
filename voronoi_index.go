@@ -13,6 +13,8 @@ import (
 
 type voronoiIndex struct {
     baseIndex
+    splitFactor int
+    maxCellItems int
     root *voronoiCell
 }
 
@@ -29,9 +31,11 @@ type itemCellDistance struct {
     distance math.Float
 }
 
-func VoronoiIndex(size int, metric string) Index {
+func VoronoiIndex(size int, metric string, splitFactor, maxCellItems int) Index {
     return &voronoiIndex {
         baseIndex: newBaseIndex(size, metric),
+        splitFactor: splitFactor,
+        maxCellItems: maxCellItems,
         root: &voronoiCell{},
     }
 }
@@ -46,14 +50,45 @@ func (index *voronoiIndex) Add(id int, value math.Vector) error {
 }
 
 func (index *voronoiIndex) Build() {
-    initialCells := index.initializeCells(index.root, index.numCentroids())
-    index.root.children = index.kMeans(index.root, initialCells)
+    stack := utils.NewStack()
+    stack.Push(index.root)
+
+    for stack.Len() > 0 {
+        parent := stack.Pop().(*voronoiCell)
+
+        if len(parent.itemIds) < index.maxCellItems {
+            continue
+        }
+
+        initialCells := index.initializeCells(parent, index.splitFactor)
+        parent.children = index.kMeans(parent, initialCells)
+        parent.itemIds = nil
+
+        for _, child := range parent.children {
+            stack.Push(child)
+        }
+    }
 }
 
 func (index *voronoiIndex) Search(query math.Vector) SearchResult {
-    cellId, _ := index.closestCell(query, index.root.children)
+    stack := utils.NewStack()
+    stack.Push(index.root)
+
+    var resultIds []int
+    for stack.Len() > 0 {
+        cell := stack.Pop().(*voronoiCell)
+
+        if len(cell.children) == 0 {
+            resultIds = cell.itemIds
+            break       
+        }
+
+        childId, _ := index.closestCell(query, cell.children)
+        stack.Push(cell.children[childId])
+    }
+
     ids := utils.NewSet()
-    for _, id := range index.root.children[cellId].itemIds {
+    for _, id := range resultIds {
         ids.Add(id)
     }
 
@@ -61,11 +96,6 @@ func (index *voronoiIndex) Search(query math.Vector) SearchResult {
     sort.Sort(result)
 
     return result
-    return nil
-}
-
-func (index *voronoiIndex) numCentroids() int {
-    return int(math.Min(math.Float(index.Len() / 1000), 100))
 }
 
 func (index *voronoiIndex) initialCell(ids []int) *voronoiCell {
