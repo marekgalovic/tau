@@ -29,7 +29,7 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.VoronoiIndex(d, "Euclidean", 10, 2500)
+    index := tau.VoronoiIndex(d, "Euclidean", 10, 1024)
 
     startAt := time.Now()
     f, err = os.Open("./examples/data/dim256.txt")
@@ -90,14 +90,14 @@ func main() {
 
     var totalSearchDuration time.Duration
     var result tau.SearchResult
-    for i := 0; i < 1; i++ {
+    for i := 0; i < 1000; i++ {
         startAt = time.Now()
         result = index.Search(query)
         d := time.Since(startAt)
         // fmt.Println("Btree search time:", d)
         totalSearchDuration += d
     }
-    fmt.Println("Avg search time:", totalSearchDuration / 1)
+    fmt.Println("Avg search time:", totalSearchDuration / 1000)
     fmt.Println("Returned results:", len(result))
 
     topTenBtreeIds := make(map[int]struct{})

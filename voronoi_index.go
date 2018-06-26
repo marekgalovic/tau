@@ -31,6 +31,10 @@ type itemCellDistance struct {
     distance math.Float
 }
 
+// Voronoi index builds a tree using kMeans algorithm.
+// Every node of this tree (except leaf nodes) has number of children determined by
+// splitFactor argument.
+// Once there is <= maxCellItems in a node, it's considered to be a leaf node.
 func VoronoiIndex(size int, metric string, splitFactor, maxCellItems int) Index {
     return &voronoiIndex {
         baseIndex: newBaseIndex(size, metric),
@@ -49,6 +53,7 @@ func (index *voronoiIndex) Add(id int, value math.Vector) error {
     return nil
 }
 
+// Build builds the search tree.
 func (index *voronoiIndex) Build() {
     stack := utils.NewStack()
     stack.Push(index.root)
@@ -56,7 +61,7 @@ func (index *voronoiIndex) Build() {
     for stack.Len() > 0 {
         parent := stack.Pop().(*voronoiCell)
 
-        if len(parent.itemIds) < index.maxCellItems {
+        if len(parent.itemIds) <= index.maxCellItems {
             continue
         }
 
@@ -70,29 +75,46 @@ func (index *voronoiIndex) Build() {
     }
 }
 
+// Search traverses the built tree to find nearest points given a query.
+// If a difference of distance between nearest cell and other cells in a given
+// node is < 10% then other nodes are also considered with lower priority.
+// Traversal stops once there are int(splitFactor / 5) * maxCellItems candidates.
 func (index *voronoiIndex) Search(query math.Vector) SearchResult {
+    kNearest := int(index.splitFactor / 5)
+    maxResultCandidates := kNearest * index.maxCellItems
+
     stack := utils.NewStack()
     stack.Push(index.root)
 
-    var resultIds []int
+    resultIds := utils.NewSet()
+    searchLoop:
     for stack.Len() > 0 {
         cell := stack.Pop().(*voronoiCell)
 
-        if len(cell.children) == 0 {
-            resultIds = cell.itemIds
-            break       
+        if cell.isLeaf() {
+            for _, itemId := range cell.itemIds {
+                resultIds.Add(itemId)
+
+                if resultIds.Len() >= maxResultCandidates {
+                    break searchLoop
+                }
+            }
+            continue
         }
 
-        childId, _ := index.closestCell(query, cell.children)
-        stack.Push(cell.children[childId])
+        nearCells := index.kNearestCells(kNearest, query, cell.children)
+        nearestCell := nearCells[0]
+
+        for i := 0; i < len(nearCells) - 1; i++ {
+            candidate := nearCells[len(nearCells) - 1 - i]
+            if ((candidate.distance - nearestCell.distance) / nearestCell.distance) < 1e-1 {
+                stack.Push(cell.children[candidate.cellId])
+            }
+        }
+        stack.Push(cell.children[nearestCell.cellId])
     }
 
-    ids := utils.NewSet()
-    for _, id := range resultIds {
-        ids.Add(id)
-    }
-
-    result := newSearchResult(index, query, ids)
+    result := newSearchResult(index, query, resultIds)
     sort.Sort(result)
 
     return result
@@ -164,7 +186,7 @@ func (index *voronoiIndex) kMeans(parent *voronoiCell, cells []*voronoiCell) []*
     return cells
 }
 
-func (index *voronoiIndex) closestCell(item math.Vector, cells []*voronoiCell) (int, math.Float) {
+func (index *voronoiIndex) nearestCell(item math.Vector, cells []*voronoiCell) (int, math.Float) {
     minDistance := math.MaxFloat
     var id int
     for cellId, cell := range cells {
@@ -174,6 +196,22 @@ func (index *voronoiIndex) closestCell(item math.Vector, cells []*voronoiCell) (
         }
     }
     return id, minDistance
+}
+
+func (index *voronoiIndex) kNearestCells(k int, item math.Vector, cells []*voronoiCell) []*itemCellDistance {
+    result := make([]*itemCellDistance, len(cells))
+    for cellId, cell := range cells {
+        result[cellId] = &itemCellDistance{0, cellId, math.EuclideanDistance(item, cell.centroid)}
+    }
+
+    sort.Slice(result, func(i, j int) bool {
+        return result[i].distance < result[j].distance
+    })
+
+    if len(result) > k {
+        return result[:k]
+    }
+    return result
 }
 
 func (index *voronoiIndex) itemCellDistances(ids []int, cells []*voronoiCell) <-chan *itemCellDistance {
@@ -193,7 +231,7 @@ func (index *voronoiIndex) itemCellDistances(ids []int, cells []*voronoiCell) <-
         go func(lb, ub int) {
             defer wg.Done()
             for _, itemId := range ids[lb:ub] {
-                cellId, distance := index.closestCell(index.items[itemId], cells)
+                cellId, distance := index.nearestCell(index.items[itemId], cells)
                 results <- &itemCellDistance{itemId, cellId, distance}
             }
         }(lb, ub)
@@ -205,4 +243,8 @@ func (index *voronoiIndex) itemCellDistances(ids []int, cells []*voronoiCell) <-
     }()
 
     return results
+}
+
+func (cell *voronoiCell) isLeaf() bool {
+    return len(cell.children) == 0
 }

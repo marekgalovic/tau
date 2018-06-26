@@ -31,6 +31,10 @@ type btreeSplitArgs struct {
     rightIds []int
 }
 
+// bTree index builds a forest of randomized binary search trees.
+// Every node uniformly samples a pair of points and using a hyperplane equidistant
+// to these two points splits space based on signed point plane distance.
+// Once there is <= maxLeafItems in a node, it's considered to be a leaf node.
 func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
     if numTrees < 1 {
         panic("Num trees has to be >= 1")
@@ -43,6 +47,9 @@ func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
     }
 }
 
+// Build builds the forest.
+// As individual trees are independent of each other they
+// are built in parallel.
 func (index *btreeIndex) Build() {
     index.trees = make([]*btreeNode, index.numTrees)
     treeChans := make([]chan *btreeNode, index.numTrees)
@@ -60,6 +67,10 @@ func (index *btreeIndex) Build() {
     }
 }
 
+// Search traverses trees in the build forest in parallel.
+// If query lies on one side of the plane but condition abs(distance) <= log(l2_length(query)) / 10
+// is true then other side of the plane is also considered with lower priority.
+// Traversal stops once there are numTrees * maxLeafItems candidates. 
 func (index *btreeIndex) Search(query math.Vector) SearchResult {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
@@ -73,23 +84,23 @@ func (index *btreeIndex) Search(query math.Vector) SearchResult {
     var nDone int
     resultIds := utils.NewSet()
 
-    resultsLoop:
+    searchLoop:
     for {
         select {
         case resultSlice := <- resultsChan:
             for _, id := range resultSlice {
                 resultIds.Add(id)
                 if resultIds.Len() == index.numTrees * index.maxLeafItems {
-                    break resultsLoop
+                    break searchLoop
                 }
             }
         case <- doneChan:
             nDone++
             if nDone == len(index.trees) {
-                break resultsLoop
+                break searchLoop
             }
         case <- time.After(1 * time.Second):
-            break resultsLoop
+            break searchLoop
         }
     }
 
