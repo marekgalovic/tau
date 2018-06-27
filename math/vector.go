@@ -2,6 +2,8 @@ package math
 
 import (
     "sort";
+    "bytes";
+    "encoding/binary";
 )
 
 type Vector []Float
@@ -15,6 +17,28 @@ func (v Vector) Less(i, j int) bool { return v[i] < v[j] }
 func (v Vector) Sort() Vector {
     sort.Sort(v)
     return v
+}
+
+func VectorFromSlice(slice []float32) Vector {
+    vector := make(Vector, len(slice))
+    for i, element := range slice {
+        vector[i] = Float(element)
+    }
+    return vector
+}
+
+func VectorFromBytes(bytesSlice [][]byte) (Vector, error) {
+    vector := make(Vector, len(bytesSlice))
+    for i, b := range bytesSlice {
+        var element float32
+        buf := bytes.NewReader(b)
+        err := binary.Read(buf, binary.BigEndian, &element)
+        if err != nil {
+            return nil, err
+        }
+        vector[i] = Float(element)
+    }
+    return vector, nil
 }
 
 func ZerosVector(size int) Vector {

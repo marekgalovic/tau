@@ -1,0 +1,17 @@
+syntax = "proto3";
+package tau;
+
+service SearchService {
+    rpc Search(SearchRequest) returns (stream SearchResultItem);
+}
+
+message SearchRequest {
+    string dataset          = 1;
+    int32 k                 = 2;
+    repeated float query    = 3; 
+}
+
+message SearchResultItem {
+    int64 id                = 1;
+    float distance          = 2;
+}

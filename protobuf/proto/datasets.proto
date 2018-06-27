@@ -1,0 +1,23 @@
+syntax = "proto3";
+package tau;
+
+import "core.proto";
+
+service DatasetsService {
+    rpc List(EmptyRequest) returns (stream Dataset);
+    rpc Create(Dataset) returns (EmptyResponse);
+    rpc Delete(Dataset) returns  (EmptyResponse);
+}
+
+message IndexOptions {
+    int32 size              = 1;
+    string metric           = 2;
+    int32 max_leaf_items    = 3;
+    int32 num_trees         = 4;
+    int32 split_factor      = 5;
+}
+
+message Dataset {
+    string name         = 1;
+    IndexOptions index  = 2;
+}
