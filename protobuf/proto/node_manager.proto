@@ -1,0 +1,6 @@
+syntax = "proto3";
+package tau;
+
+message Node {
+    string address = 1;
+}

@@ -7,6 +7,7 @@ Package tau is a generated protocol buffer package.
 It is generated from these files:
 	core.proto
 	datasets.proto
+	node_manager.proto
 	search.proto
 
 It has these top-level messages:
@@ -14,6 +15,7 @@ It has these top-level messages:
 	EmptyResponse
 	IndexOptions
 	Dataset
+	Node
 	SearchRequest
 	SearchResultItem
 */

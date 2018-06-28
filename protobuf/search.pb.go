@@ -26,7 +26,7 @@ type SearchRequest struct {
 func (m *SearchRequest) Reset()                    { *m = SearchRequest{} }
 func (m *SearchRequest) String() string            { return proto.CompactTextString(m) }
 func (*SearchRequest) ProtoMessage()               {}
-func (*SearchRequest) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{0} }
+func (*SearchRequest) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
 
 func (m *SearchRequest) GetDataset() string {
 	if m != nil {
@@ -57,7 +57,7 @@ type SearchResultItem struct {
 func (m *SearchResultItem) Reset()                    { *m = SearchResultItem{} }
 func (m *SearchResultItem) String() string            { return proto.CompactTextString(m) }
 func (*SearchResultItem) ProtoMessage()               {}
-func (*SearchResultItem) Descriptor() ([]byte, []int) { return fileDescriptor2, []int{1} }
+func (*SearchResultItem) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{1} }
 
 func (m *SearchResultItem) GetId() int64 {
 	if m != nil {
@@ -177,9 +177,9 @@ var _SearchService_serviceDesc = grpc.ServiceDesc{
 	Metadata: "search.proto",
 }
 
-func init() { proto.RegisterFile("search.proto", fileDescriptor2) }
+func init() { proto.RegisterFile("search.proto", fileDescriptor3) }
 
-var fileDescriptor2 = []byte{
+var fileDescriptor3 = []byte{
 	// 189 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x8f, 0x31, 0x4b, 0xc7, 0x30,
 	0x10, 0x47, 0x49, 0x42, 0xab, 0x1e, 0x55, 0xe4, 0x50, 0x08, 0x9d, 0x4a, 0xa7, 0x4e, 0x45, 0x14,
