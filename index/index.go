@@ -100,26 +100,28 @@ func (index *baseIndex) writeHeader(writer io.Writer, indexType []byte) error {
     return nil
 }
 
-func (index *baseIndex) readHeader(reader io.Reader) (string, int, string, error) {
+func (index *baseIndex) readHeader(reader io.Reader) ([]byte, error) {
     // Index type
     indexType := make([]byte, 6)
     if _, err := reader.Read(indexType); err != nil {
-        return "", 0, "", err
+        return nil, err
     }
     // Index size
     var size int32
     if err := binary.Read(reader, binary.LittleEndian, &size); err != nil {
-        return "", 0, "", err
+        return nil, err
     }
+    index.size = int(size)
     // Metric
     var metricBytesSize int32
     if err := binary.Read(reader, binary.LittleEndian, &metricBytesSize); err != nil {
-        return "", 0, "", err
+        return nil, err
     }
     metric := make([]byte, metricBytesSize)
     if _, err := reader.Read(metric); err != nil {
-        return "", 0, "", err
+        return nil, err
     }
+    index.metric = string(metric)
 
-    return string(indexType), int(size), string(metric), nil
+    return indexType, nil
 }

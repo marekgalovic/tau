@@ -70,10 +70,12 @@ func (index *btreeIndex) Build() {
     }
 }
 
+// Write binary representation of the index
 func (index *btreeIndex) Save(writer io.Writer) error {
     if err := index.writeHeader(writer, []byte("tauBTR")); err != nil {
         return err
     }
+
     // Index specific headers
     if err := binary.Write(writer, binary.LittleEndian, int32(index.numTrees)); err != nil {
         return err
@@ -81,24 +83,116 @@ func (index *btreeIndex) Save(writer io.Writer) error {
     if err := binary.Write(writer, binary.LittleEndian, int32(index.maxLeafItems)); err != nil {
         return err
     }
+
+    // Index structure
+    for _, tree := range index.trees {
+        if err := index.writeTree(writer, tree); err != nil {
+            return err
+        }
+    }
     return nil
 }
 
+func (index *btreeIndex) writeTree(writer io.Writer, tree *btreeNode) error {
+    stack := utils.NewStack()
+    stack.Push(tree)
+
+    for stack.Len() > 0 {
+        node := stack.Pop().(*btreeNode)
+
+        if err := binary.Write(writer, binary.LittleEndian, node.isLeaf()); err != nil {
+            return err
+        }
+        if node.isLeaf() {
+            if err := binary.Write(writer, binary.LittleEndian, int32(len(node.itemIds))); err != nil {
+                return err
+            }
+            if err := binary.Write(writer, binary.LittleEndian, node.itemIds); err != nil {
+                return err
+            }
+        } else {
+            if err := binary.Write(writer, binary.LittleEndian, node.value); err != nil {
+                return err
+            }
+            stack.Push(node.rightNode)
+            stack.Push(node.leftNode)
+        }
+    }
+    return nil
+}
+
+// Read binary representation of the index
 func (index *btreeIndex) Load(reader io.Reader) error {
-    indexType, size, metric, err := index.readHeader(reader)
+    indexType, err := index.readHeader(reader)
     if err != nil {
         return err
     }
+    if string(indexType) != "tauBTR" {
+        return fmt.Errorf("Invalid index type `%s`", indexType)
+    }
+
+    // Index specific headers
     var numTrees int32
     if err := binary.Read(reader, binary.LittleEndian, &numTrees); err != nil {
         return err
     }
+    index.numTrees = int(numTrees)
+
     var maxLeafItems int32
     if err := binary.Read(reader, binary.LittleEndian, &maxLeafItems); err != nil {
         return err
     }
-    fmt.Println(indexType, size, metric, numTrees, maxLeafItems)
+    index.maxLeafItems = int(maxLeafItems)
+
+    // Index structure
+    index.trees = make([]*btreeNode, index.numTrees)
+    for i := 0; i < index.numTrees; i++ {
+        tree, err := index.readTree(reader)
+        if err != nil {
+            return err
+        }
+        index.trees[i] = tree
+    }
+
     return nil
+}
+
+func (index *btreeIndex) readTree(reader io.Reader) (*btreeNode, error) {
+    tree := &btreeNode{}
+
+    stack := utils.NewStack()
+    stack.Push(tree)
+
+    for stack.Len() > 0 {
+        node := stack.Pop().(*btreeNode)
+
+        var isLeaf bool
+        if err := binary.Read(reader, binary.LittleEndian, &isLeaf); err != nil {
+            return nil, err
+        }
+        if isLeaf {
+            var itemsCount int32
+            if err := binary.Read(reader, binary.LittleEndian, &itemsCount); err != nil {
+                return nil, err
+            }
+            node.itemIds = make([]int64, itemsCount)
+            if err := binary.Read(reader, binary.LittleEndian, &node.itemIds); err != nil {
+                return nil, err
+            }
+        } else {
+            node.value = make(math.Vector, index.size + 1) // +1 here because hyperplanes are n+1 dimensional vectors
+            if err := binary.Read(reader, binary.LittleEndian, &node.value); err != nil {
+                return nil, err
+            }
+            node.leftNode = &btreeNode{}
+            node.rightNode = &btreeNode{}
+
+            stack.Push(node.rightNode)
+            stack.Push(node.leftNode)
+        }
+    }
+
+    return tree, nil
 }
 
 // Search traverses trees in the build forest in parallel.
@@ -267,4 +361,8 @@ func splitSamples(index *btreeIndex, ids []int64) (*btreeNode, []int64, []int64)
 
 func (bt *btreeNode) isLeaf() bool {
     return (bt.leftNode == nil) && (bt.rightNode == nil)
+}
+
+func (bt *btreeNode) len() int {
+    return len(bt.itemIds)
 }
