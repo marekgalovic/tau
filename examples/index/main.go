@@ -13,8 +13,8 @@ import (
 func main() {
     log.Info("Tau")
 
-    btree := index.NewBtreeIndex(256, "Euclidean", 5, 1024)
-    for i := 0; i < 1000000; i++ {
+    btree := index.NewVoronoiIndex(256, "Euclidean", 10, 512)
+    for i := 0; i < 100000; i++ {
         btree.Add(int64(i), math.RandomUniformVector(256))
     }
 

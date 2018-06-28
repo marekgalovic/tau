@@ -2,11 +2,13 @@
  package index
 
 import (
+    "fmt";
     "io";
     "sort";
     "sync";
     "runtime";
     "math/rand";
+    "encoding/binary";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
@@ -77,10 +79,120 @@ func (index *voronoiIndex) Build() {
 }
 
 func (index *voronoiIndex) Save(writer io.Writer) error {
+    if err := index.writeHeader(writer, []byte("tauVOR")); err != nil {
+        return err
+    }
+
+    // Index specific headers
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.splitFactor)); err != nil {
+        return err
+    }
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.maxCellItems)); err != nil {
+        return err
+    }
+
+    return index.writeCells(writer)
+}
+
+func (index *voronoiIndex) writeCells(writer io.Writer) error {
+    stack := utils.NewStack()
+    stack.Push(index.root)
+
+    for stack.Len() > 0 {
+        cell := stack.Pop().(*voronoiCell)
+
+        if err := binary.Write(writer, binary.LittleEndian, cell.isLeaf()); err != nil {
+            return err
+        }
+        if err := binary.Write(writer, binary.LittleEndian, cell.hasCentroid()); err != nil {
+            return err
+        }
+        if cell.hasCentroid() {
+            if err := binary.Write(writer, binary.LittleEndian, cell.centroid); err != nil {
+                return err
+            }
+        }
+
+        if cell.isLeaf() {
+            if err := binary.Write(writer, binary.LittleEndian, int32(len(cell.itemIds))); err != nil {
+                return err
+            }
+            if err := binary.Write(writer, binary.LittleEndian, cell.itemIds); err != nil {
+                return err
+            }
+        } else {
+            for i := 0; i < index.splitFactor; i++ {
+                stack.Push(cell.children[index.splitFactor - 1 - i])
+            }
+        }
+    }
     return nil
 }
 
 func (index *voronoiIndex) Load(reader io.Reader) error {
+    indexType, err := index.readHeader(reader)
+    if err != nil {
+        return err
+    }
+    if string(indexType) != "tauVOR" {
+        return fmt.Errorf("Invalid index type `%s`", indexType)
+    }
+
+    var splitFactor int32
+    if err := binary.Read(reader, binary.LittleEndian, &splitFactor); err != nil {
+        return err
+    }
+    index.splitFactor = int(splitFactor)
+
+    var maxCellItems int32
+    if err := binary.Read(reader, binary.LittleEndian, &maxCellItems); err != nil {
+        return err
+    }
+    index.maxCellItems = int(maxCellItems)
+    
+    return index.readCells(reader)
+}
+
+func (index *voronoiIndex) readCells(reader io.Reader) error {
+    root := &voronoiCell{}
+
+    stack := utils.NewStack()
+    stack.Push(root)
+
+    for stack.Len() > 0 {
+        cell := stack.Pop().(*voronoiCell)
+
+        var isLeaf, hasCentroid bool
+        if err := binary.Read(reader, binary.LittleEndian, &isLeaf); err != nil {
+            return err
+        }
+        if err := binary.Read(reader, binary.LittleEndian, &hasCentroid); err != nil {
+            return err
+        }
+        if hasCentroid {
+            cell.centroid = make(math.Vector, index.size)
+            if err := binary.Read(reader, binary.LittleEndian, &cell.centroid); err != nil {
+                return err
+            }
+        }
+
+        if isLeaf {
+            var itemsCount int32
+            if err := binary.Read(reader, binary.LittleEndian, &itemsCount); err != nil {
+                return err
+            }
+            cell.itemIds = make([]int64, itemsCount)
+            if err := binary.Read(reader, binary.LittleEndian, &cell.itemIds); err != nil {
+                return err
+            }
+        } else {
+            cell.children = make([]*voronoiCell, index.splitFactor)
+            for i := 0; i < index.splitFactor; i++ {
+                cell.children[index.splitFactor - 1 - i] = &voronoiCell{}
+                stack.Push(cell.children[index.splitFactor - 1 - i])
+            }
+        }
+    }
     return nil
 }
 
@@ -256,4 +368,8 @@ func (index *voronoiIndex) itemCellDistances(ids []int64, cells []*voronoiCell) 
 
 func (cell *voronoiCell) isLeaf() bool {
     return len(cell.children) == 0
+}
+
+func (cell *voronoiCell) hasCentroid() bool {
+    return len(cell.centroid) > 0
 }
