@@ -2,10 +2,13 @@
 package index
 
 import (
+    "fmt";
+    "io";
     "sort";
     "time";
     "sync";
     "context";
+    "encoding/binary";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
@@ -20,15 +23,15 @@ type btreeIndex struct {
 
 type btreeNode struct {
     value math.Vector
-    itemIds []int
+    itemIds []int64
     leftNode *btreeNode
     rightNode *btreeNode
 }
 
 type btreeSplitArgs struct {
     parent *btreeNode
-    leftIds []int
-    rightIds []int
+    leftIds []int64
+    rightIds []int64
 }
 
 // bTree index builds a forest of randomized binary search trees.
@@ -67,6 +70,37 @@ func (index *btreeIndex) Build() {
     }
 }
 
+func (index *btreeIndex) Save(writer io.Writer) error {
+    if err := index.writeHeader(writer, []byte("tauBTR")); err != nil {
+        return err
+    }
+    // Index specific headers
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.numTrees)); err != nil {
+        return err
+    }
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.maxLeafItems)); err != nil {
+        return err
+    }
+    return nil
+}
+
+func (index *btreeIndex) Load(reader io.Reader) error {
+    indexType, size, metric, err := index.readHeader(reader)
+    if err != nil {
+        return err
+    }
+    var numTrees int32
+    if err := binary.Read(reader, binary.LittleEndian, &numTrees); err != nil {
+        return err
+    }
+    var maxLeafItems int32
+    if err := binary.Read(reader, binary.LittleEndian, &maxLeafItems); err != nil {
+        return err
+    }
+    fmt.Println(indexType, size, metric, numTrees, maxLeafItems)
+    return nil
+}
+
 // Search traverses trees in the build forest in parallel.
 // If query lies on one side of the plane but condition abs(distance) <= log(l2_length(query)) / 10
 // is true then other side of the plane is also considered with lower priority.
@@ -75,7 +109,7 @@ func (index *btreeIndex) Search(query math.Vector) SearchResult {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
-    resultsChan := make(chan []int)
+    resultsChan := make(chan []int64)
     doneChan := make(chan struct{})
     for _, tree := range index.trees {
         go index.searchTree(tree, query, ctx, resultsChan, doneChan) 
@@ -110,7 +144,7 @@ func (index *btreeIndex) Search(query math.Vector) SearchResult {
     return result
 }
 
-func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx context.Context, results chan []int, done chan struct{}) {
+func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx context.Context, results chan []int64, done chan struct{}) {
     distanceThreshold := math.Log(math.Length(query)) / 10
 
     nodes := utils.NewStack()
@@ -166,8 +200,8 @@ func newBtree(index *btreeIndex) *btreeNode {
     }
     split := math.EquidistantPlane(pointA, pointB)
 
-    leftIds := make([]int, 0)
-    rightIds := make([]int, 0)
+    leftIds := make([]int64, 0)
+    rightIds := make([]int64, 0)
     for idx, item := range index.items {
         if math.PointPlaneDistance(item, split) <= 0 {
             leftIds = append(leftIds, idx)
@@ -184,7 +218,7 @@ func newBtree(index *btreeIndex) *btreeNode {
         wg := &sync.WaitGroup{}
         args := stack.Pop().(*btreeSplitArgs)
 
-        var leftIds, rightIds []int
+        var leftIds, rightIds []int64
         if len(args.leftIds) > index.maxLeafItems {
             wg.Add(1)
             go func() {
@@ -213,13 +247,13 @@ func newBtree(index *btreeIndex) *btreeNode {
     return root
 }
 
-func splitSamples(index *btreeIndex, ids []int) (*btreeNode, []int, []int) {
+func splitSamples(index *btreeIndex, ids []int64) (*btreeNode, []int64, []int64) {
     pointIds := math.RandomDistinctInts(2, len(ids))
     pointA := index.items[ids[pointIds[0]]]
     pointB := index.items[ids[pointIds[1]]]
     split := math.EquidistantPlane(pointA, pointB)
 
-    var leftIds, rightIds []int
+    var leftIds, rightIds []int64
     for _, id := range ids {
         if math.PointPlaneDistance(index.Get(id), split) <= 0 {
             leftIds = append(leftIds, id)

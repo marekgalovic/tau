@@ -14,7 +14,7 @@ func newSearchResult(index Index, query math.Vector, ids utils.Set) SearchResult
     for idx := range ids.ToIterator() {
         result = append(result, &pb.SearchResultItem {
             Id: idx.(int64),
-            Distance: float32(index.ComputeDistance(index.Get(idx.(int)), query)),
+            Distance: float32(index.ComputeDistance(index.Get(idx.(int64)), query)),
         })
     }
 

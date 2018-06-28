@@ -2,6 +2,7 @@
  package index
 
 import (
+    "io";
     "sort";
     "sync";
     "runtime";
@@ -21,12 +22,12 @@ type voronoiIndex struct {
 type voronoiCell struct {
     centroid math.Vector
     cost math.Float
-    itemIds []int
+    itemIds []int64
     children []*voronoiCell
 }
 
 type itemCellDistance struct {
-    itemId int
+    itemId int64
     cellId int
     distance math.Float
 }
@@ -44,7 +45,7 @@ func NewVoronoiIndex(size int, metric string, splitFactor, maxCellItems int) Ind
     }
 }
 
-func (index *voronoiIndex) Add(id int, value math.Vector) error {
+func (index *voronoiIndex) Add(id int64, value math.Vector) error {
     if err := index.baseIndex.Add(id, value); err != nil {
         return err
     }
@@ -73,6 +74,14 @@ func (index *voronoiIndex) Build() {
             stack.Push(child)
         }
     }
+}
+
+func (index *voronoiIndex) Save(writer io.Writer) error {
+    return nil
+}
+
+func (index *voronoiIndex) Load(reader io.Reader) error {
+    return nil
 }
 
 // Search traverses the built tree to find nearest points given a query.
@@ -120,7 +129,7 @@ func (index *voronoiIndex) Search(query math.Vector) SearchResult {
     return result
 }
 
-func (index *voronoiIndex) initialCell(ids []int) *voronoiCell {
+func (index *voronoiIndex) initialCell(ids []int64) *voronoiCell {
     itemId := ids[rand.Intn(len(ids))]
 
     return &voronoiCell{centroid: index.items[itemId]}
@@ -160,7 +169,7 @@ func (index *voronoiIndex) kMeans(parent *voronoiCell, cells []*voronoiCell) []*
     var previousCost math.Float
     for i := 0; i < 100; i++ {
         for j, _ := range cells {
-            cells[j].itemIds = make([]int, 0)
+            cells[j].itemIds = make([]int64, 0)
             newCentroids[j] = make(math.Vector, index.size)
         }
 
@@ -214,7 +223,7 @@ func (index *voronoiIndex) kNearestCells(k int, item math.Vector, cells []*voron
     return result
 }
 
-func (index *voronoiIndex) itemCellDistances(ids []int, cells []*voronoiCell) <-chan *itemCellDistance {
+func (index *voronoiIndex) itemCellDistances(ids []int64, cells []*voronoiCell) <-chan *itemCellDistance {
     wg := &sync.WaitGroup{}
     results := make(chan *itemCellDistance)
     numThreads := runtime.NumCPU()

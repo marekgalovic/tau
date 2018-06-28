@@ -2,7 +2,8 @@
 
 import (
     "fmt";
-    "math/rand";
+    "io";
+    "encoding/binary";
 
     "github.com/marekgalovic/tau/math"
 )
@@ -12,41 +13,41 @@ type Index interface {
     Search(math.Vector) SearchResult
     ByteSize() int
     Len() int
-    Items() map[int]math.Vector
-    Add(int, math.Vector) error
-    Get(int) math.Vector
+    Items() map[int64]math.Vector
+    Add(int64, math.Vector) error
+    Get(int64) math.Vector
     ComputeDistance(math.Vector, math.Vector) math.Float
-    // Load(string) error
-    // Save(string) error
+    Load(io.Reader) error
+    Save(io.Writer) error
 }
 
 type baseIndex struct {
     size int
     metric string
-    items map[int]math.Vector
+    items map[int64]math.Vector
 }
 
 func newBaseIndex(size int, metric string) baseIndex {
     return baseIndex{
         size: size,
         metric: metric,
-        items: make(map[int]math.Vector),
+        items: make(map[int64]math.Vector),
     }
 }
 
 func (i *baseIndex) ByteSize() int {
-    return 8 * i.size * len(i.items)
+    return 8 * int(i.size) * i.Len()
 }
 
 func (i *baseIndex) Len() int {
     return len(i.items)
 }
 
-func (i *baseIndex) Items() map[int]math.Vector {
+func (i *baseIndex) Items() map[int64]math.Vector {
     return i.items
 }
 
-func (i *baseIndex) Add(id int, vec math.Vector) error {
+func (i *baseIndex) Add(id int64, vec math.Vector) error {
     if len(vec) != i.size {
         return fmt.Errorf("Vector with %d components does not match index size %d", len(vec), i.size)
     }
@@ -58,7 +59,7 @@ func (i *baseIndex) Add(id int, vec math.Vector) error {
     return nil
 }
 
-func (i *baseIndex) Get(id int) math.Vector {
+func (i *baseIndex) Get(id int64) math.Vector {
     return i.items[id]
 }
 
@@ -75,7 +76,50 @@ func (i *baseIndex) ComputeDistance(a, b math.Vector) math.Float {
     panic("Invalid metric")
 }
 
-func (i *baseIndex) randomItem() math.Vector {
-    return i.items[rand.Intn(len(i.items))]
+func (index *baseIndex) writeHeader(writer io.Writer, indexType []byte) error {
+    if len(indexType) != 6 {
+        return fmt.Errorf("Index type must be 6 bytes long")
+    }
+    // Index type
+    if _, err := writer.Write(indexType); err != nil {
+        return err
+    }
+    // Index size
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.size)); err != nil {
+        return err
+    }
+    // Metric
+    metricBytes := []byte(index.metric)
+    if err := binary.Write(writer, binary.LittleEndian, int32(len(metricBytes))); err != nil {
+        return err
+    }
+    if _, err := writer.Write(metricBytes); err != nil {
+        return err
+    }
+
+    return nil
 }
 
+func (index *baseIndex) readHeader(reader io.Reader) (string, int, string, error) {
+    // Index type
+    indexType := make([]byte, 6)
+    if _, err := reader.Read(indexType); err != nil {
+        return "", 0, "", err
+    }
+    // Index size
+    var size int32
+    if err := binary.Read(reader, binary.LittleEndian, &size); err != nil {
+        return "", 0, "", err
+    }
+    // Metric
+    var metricBytesSize int32
+    if err := binary.Read(reader, binary.LittleEndian, &metricBytesSize); err != nil {
+        return "", 0, "", err
+    }
+    metric := make([]byte, metricBytesSize)
+    if _, err := reader.Read(metric); err != nil {
+        return "", 0, "", err
+    }
+
+    return string(indexType), int(size), string(metric), nil
+}
