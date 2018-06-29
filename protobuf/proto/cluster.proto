@@ -1,0 +1,8 @@
+syntax = "proto3";
+package tau;
+
+message Node {
+    int64 seqId         = 1;
+    string uuid         = 2;
+    string ip_address   = 3;
+}

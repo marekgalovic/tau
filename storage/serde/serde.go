@@ -5,11 +5,11 @@ import (
 )
 
 type Serializer interface {
-    SerializeItem(int, math.Vector) ([]byte, error)
+    SerializeItem(int64, math.Vector) ([]byte, error)
 }
 
 type Deserializer interface {
-    DeserializeItem([]byte) (int, math.Vector, error)
+    DeserializeItem([]byte) (int64, math.Vector, error)
 }
 
 type SerializerDeserializer interface {

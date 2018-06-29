@@ -12,6 +12,7 @@ import (
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
+    pb "github.com/marekgalovic/tau/protobuf";
 )
 
 type btreeIndex struct {
@@ -48,6 +49,18 @@ func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
         numTrees: numTrees,
         maxLeafItems: maxLeafItems,
     }
+}
+
+func (index *btreeIndex) ToProto() *pb.Index {
+    proto := index.baseIndex.ToProto()
+    proto.Name = "btree"
+    proto.Options = &pb.Index_Btree {
+        Btree: &pb.BtreeIndexOptions {
+            NumTrees: int32(index.numTrees),
+            MaxLeafItems: int32(index.maxLeafItems),
+        },
+    }
+    return proto
 }
 
 // Build builds the forest.

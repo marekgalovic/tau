@@ -1,23 +1,30 @@
 syntax = "proto3";
 package tau;
 
-import "core.proto";
+// import "core.proto";
 
-service DatasetsService {
-    rpc List(EmptyRequest) returns (stream Dataset);
-    rpc Create(Dataset) returns (EmptyResponse);
-    rpc Delete(Dataset) returns  (EmptyResponse);
+message BtreeIndexOptions {
+    int32 num_trees         = 1;
+    int32 max_leaf_items    = 2;
 }
 
-message IndexOptions {
-    int32 size              = 1;
-    string metric           = 2;
-    int32 max_leaf_items    = 3;
-    int32 num_trees         = 4;
-    int32 split_factor      = 5;
+message VoronoiIndexOptions {
+    int32 split_factor      = 1;
+    int32 max_cell_items    = 2;
+}
+
+message Index {
+    string name     = 1;
+    int32 size      = 2;
+    string metric   = 3;
+    oneof options {
+        BtreeIndexOptions btree     = 4;
+        VoronoiIndexOptions voronoi = 5;
+    };
 }
 
 message Dataset {
     string name         = 1;
-    IndexOptions index  = 2;
+    string path         = 2;
+    Index index         = 3;
 }

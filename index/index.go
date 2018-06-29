@@ -5,7 +5,8 @@ import (
     "io";
     "encoding/binary";
 
-    "github.com/marekgalovic/tau/math"
+    "github.com/marekgalovic/tau/math";
+    pb "github.com/marekgalovic/tau/protobuf"
 )
 
 type Index interface {
@@ -19,6 +20,7 @@ type Index interface {
     ComputeDistance(math.Vector, math.Vector) math.Float
     Load(io.Reader) error
     Save(io.Writer) error
+    ToProto() *pb.Index
 }
 
 type baseIndex struct {
@@ -45,6 +47,13 @@ func (i *baseIndex) Len() int {
 
 func (i *baseIndex) Items() map[int64]math.Vector {
     return i.items
+}
+
+func (i *baseIndex) ToProto() *pb.Index {
+    return &pb.Index {
+        Size: int32(i.size),
+        Metric: i.metric,
+    }
 }
 
 func (i *baseIndex) Add(id int64, vec math.Vector) error {

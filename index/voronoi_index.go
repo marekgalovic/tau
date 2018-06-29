@@ -12,6 +12,7 @@ import (
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/utils";
+    pb "github.com/marekgalovic/tau/protobuf";
 )
 
 type voronoiIndex struct {
@@ -54,6 +55,18 @@ func (index *voronoiIndex) Add(id int64, value math.Vector) error {
 
     index.root.itemIds = append(index.root.itemIds, id)
     return nil
+}
+
+func (index *voronoiIndex) ToProto() *pb.Index {
+    proto := index.baseIndex.ToProto()
+    proto.Name = "voronoi"
+    proto.Options = &pb.Index_Voronoi {
+        Voronoi: &pb.VoronoiIndexOptions {
+            SplitFactor: int32(index.splitFactor),
+            MaxCellItems: int32(index.maxCellItems),
+        },
+    }
+    return proto
 }
 
 // Build builds the search tree.

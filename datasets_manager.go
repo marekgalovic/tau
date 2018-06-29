@@ -4,47 +4,35 @@ import (
     "fmt";
 
     "github.com/marekgalovic/tau/index";
+    "github.com/marekgalovic/tau/storage";
+
+    "github.com/samuel/go-zookeeper/zk";
 )
 
 type DatasetsManager interface {
-    Add(string, index.Index) error
+    Create(string, string, index.Index) error
     Get(string) (index.Index, error)
-    Delete(string) error
 }
 
 type datasetsManager struct {
-    datasets map[string]index.Index
+    zk *zk.Conn
+    storage storage.Storage
 }
 
-func NewDatasetsManager() DatasetsManager {
+func NewDatasetsManager(zkConn *zk.Conn, storage storage.Storage) DatasetsManager {
     return &datasetsManager {
-        datasets: make(map[string]index.Index),
+        zk: zkConn,
+        storage: storage,
     }
 }
 
-func (m *datasetsManager) Add(name string, index index.Index) error {
-    if _, exists := m.datasets[name]; exists {
-        return fmt.Errorf("Dataset `%s` already exists", name)
-    }
+func (dm *datasetsManager) Create(name, path string, index index.Index) error {
+    d := NewDataset(name, path, index, dm.storage)
 
-    m.datasets[name] = index
+    fmt.Println(d.meta)
     return nil
 }
 
-func (m *datasetsManager) Get(name string) (index.Index, error) {
-    index, exists := m.datasets[name]
-    if !exists {
-        return nil, fmt.Errorf("Index `%s` does not exist", name)
-    }
-
-    return index, nil
-}
-
-func (m *datasetsManager) Delete(name string) error {
-    if _, exists := m.datasets[name]; !exists {
-        return fmt.Errorf("Index `%s` does not exist", name)
-    }
-
-    delete(m.datasets, name)
-    return nil
+func (dm *datasetsManager) Get(name string) (index.Index, error) {
+    return nil, nil
 }

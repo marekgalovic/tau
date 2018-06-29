@@ -18,7 +18,7 @@ func NewCsv(sep string) *csvSerde {
     }
 }
 
-func (csv *csvSerde) DeserializeItem(data []byte) (int, math.Vector, error) {
+func (csv *csvSerde) DeserializeItem(data []byte) (int64, math.Vector, error) {
     values := bytes.Split(data, csv.sep)
     if len(values) < 2 {
         return 0, nil, fmt.Errorf("Not enough values")
@@ -36,5 +36,5 @@ func (csv *csvSerde) DeserializeItem(data []byte) (int, math.Vector, error) {
     if err != nil {
         return 0, nil, err
     }
-    return int(id), vector, nil
+    return id, vector, nil
 }

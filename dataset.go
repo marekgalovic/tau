@@ -2,8 +2,10 @@ package tau
 
 import (
     "fmt";
-    "io";
+    "os";
     "bufio";
+    "strings";
+    "crypto/sha256";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/index";
@@ -13,33 +15,25 @@ import (
 )
 
 type Dataset interface {
-    GetName() string
-    GetIndex() index.Index
     Load(string) error
 }
 
 type dataset struct {
-    name string
+    meta *pb.Dataset
     index index.Index
     storage storage.Storage
-    cluster Cluster
 }
 
-func NewDataset(name string, index index.Index, storage storage.Storage, cluster Cluster) *dataset {
+func NewDataset(name, path string, index index.Index, storage storage.Storage) *dataset {
     return &dataset {
-        name: name,
+        meta: &pb.Dataset{
+            Name: name,
+            Path: path,
+            Index: index.ToProto(),
+        },
         index: index,
         storage: storage,
-        cluster: cluster,
     }
-}
-
-func (d *dataset) GetName() string {
-    return d.name
-}
-
-func (d *dataset) GetIndex() index.Index {
-    return d.index
 }
 
 func (d *dataset) Search(k int, query math.Vector) ([]*pb.SearchResultItem, error) {
@@ -52,49 +46,53 @@ func (d *dataset) Load(path string, deserializer serde.Deserializer) error {
         return err
     }
 
-    nodesCount, err := d.cluster.NodesCount()
-    if err != nil {
-        return err
-    }
-
-    if nodesCount == 0 {
-        return d.loadLocal(files, deserializer)
-    }
-    return d.loadDistributed(files, deserializer)
+    return d.loadLocal(files, deserializer)
 }
 
 func (d *dataset) loadLocal(files []string, deserializer serde.Deserializer) error {
+    if err := d.populateIndex(files, deserializer); err != nil {
+        return err
+    }
+
+    d.index.Build()
+
+    indexFile, err := os.Create(fmt.Sprintf("/tmp/%s.tau_index", d.indexFileName(files)))
+    if err != nil {
+        return err
+    }
+    if err := d.index.Save(indexFile); err != nil {
+        return err
+    }
+
+    return indexFile.Close()
+}
+
+func (d *dataset) populateIndex(files []string, deserializer serde.Deserializer) error {
     for _, filePath := range files {
         fileReader, err := d.storage.Reader(filePath)
         if err != nil {
             return err
         }
 
-        if err = d.populateIndex(fileReader, deserializer); err != nil {
-            return err
+        bufReader := bufio.NewReader(fileReader)
+        for {
+            lineBytes, _, err := bufReader.ReadLine()
+            if err != nil {
+                break
+            }
+
+            id, vector, err := deserializer.DeserializeItem(lineBytes)
+            if err != nil {
+                return err
+            }
+            d.index.Add(id, vector)
         }
     }
     return nil
 }
 
-func (d *dataset) loadDistributed(files []string, deserializer serde.Deserializer) error {  
-    return fmt.Errorf("Distributed loading not yet supported")
-}
+func (d *dataset) indexFileName(files []string) string {
+    names := strings.Join(append(files, d.meta.Name), "")
 
-func (d *dataset) populateIndex(reader io.Reader, deserializer serde.Deserializer) error {
-    bufReader := bufio.NewReader(reader)
-
-    for {
-        lineBytes, _, err := bufReader.ReadLine()
-        if err != nil {
-            break
-        }
-        id, vector, err := deserializer.DeserializeItem(lineBytes)
-        if err != nil {
-            return err
-        }
-        d.index.Add(id, vector)
-    }
-
-    return nil
+    return fmt.Sprintf("%x", sha256.Sum256([]byte(names)))
 }
