@@ -15,6 +15,7 @@ import (
 )
 
 type Dataset interface {
+    Meta() *pb.Dataset
     Load(string) error
 }
 
@@ -34,6 +35,10 @@ func NewDataset(name, path string, index index.Index, storage storage.Storage) *
         index: index,
         storage: storage,
     }
+}
+
+func (d *dataset) Meta() *pb.Dataset {
+    return d.meta
 }
 
 func (d *dataset) Search(k int, query math.Vector) ([]*pb.SearchResultItem, error) {

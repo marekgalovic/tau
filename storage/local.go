@@ -14,31 +14,35 @@ func NewLocal() Storage {
     return &localStorage{}
 }
 
-func (s *localStorage) Exists(path string) bool {
+func (s *localStorage) Exists(path string) (bool, error) {
     if isWildcard(path) {
         files, err := ioutil.ReadDir(filepath.Dir(path))
         if err != nil {
-            panic(err)
+            return false, err
         }
         pattern := filepath.Base(path)
         for _, file := range files {
             match, err := filepath.Match(pattern, file.Name())
             if err != nil {
-                panic(err)
+                return false, err
             }
             if match {
-                return true
+                return true, nil
             }
         }
-        return false
+        return false, nil
     }
 
     _, err := os.Stat(path)
-    return err == nil
+    return err == nil, nil
 }
 
 func (s *localStorage) ListFiles(path string) ([]string, error) {
-    if !s.Exists(path) {
+    exists, err := s.Exists(path)
+    if err != nil {
+        return nil, err
+    }
+    if !exists {
         return nil, fmt.Errorf("Path `%s` does not exist", path)
     }
     if isWildcard(path) {

@@ -28,7 +28,10 @@ func main() {
         log.Fatal(err)
     }
 
-    datasetsManager := tau.NewDatasetsManager(zkConn, storage.NewLocal())
+    datasetsManager, err := tau.NewDatasetsManager(zkConn, storage.NewLocal())
+    if err != nil {
+        log.Fatal(err)
+    }
 
     datasetsManager.Create("photos", "./examples/data/random_normal.csv", index.NewBtreeIndex(256, "Euclidean", 10, 256))
 

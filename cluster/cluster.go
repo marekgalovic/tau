@@ -46,7 +46,6 @@ func (c *cluster) bootstrapZk() error {
     paths := []string{
         ZkBasePath,
         zkPath("nodes"),
-        zkPath("datasets"),
     }
 
     for _, path := range paths {
