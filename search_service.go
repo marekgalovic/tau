@@ -16,12 +16,16 @@ func newSearchService(datasetsManager DatasetsManager) *searchService {
 }
 
 func (service *searchService) Search(req *pb.SearchRequest, stream pb.SearchService_SearchServer) error {
-    dataset, err := service.datasetsManager.Get(req.GetDataset())
+    dataset, err := service.datasetsManager.GetDataset(req.GetDataset())
     if err != nil {
         return err
     }
 
-    for _, item := range dataset.Search(math.VectorFromSlice(req.GetQuery())) {
+    results, err := dataset.Search(1, math.VectorFromSlice(req.GetQuery()))
+    if err != nil {
+        return err
+    }
+    for _, item := range results {
         if err = stream.Send(item); err != nil {
             return err
         }

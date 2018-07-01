@@ -1,7 +1,11 @@
 syntax = "proto3";
 package tau;
 
-// import "core.proto";
+import "core.proto";
+
+service DatasetsManager {
+    rpc BuildPartition(BuildPartitionRequest) returns (EmptyResponse);
+}
 
 message BtreeIndexOptions {
     int32 num_trees         = 1;
@@ -28,3 +32,10 @@ message Dataset {
     string path         = 2;
     Index index         = 3;
 }
+
+message BuildPartitionRequest {
+    Dataset dataset         = 1;
+    repeated string files   = 2;
+}
+
+

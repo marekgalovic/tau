@@ -18,6 +18,7 @@ It has these top-level messages:
 	VoronoiIndexOptions
 	Index
 	Dataset
+	BuildPartitionRequest
 	SearchRequest
 	SearchResultItem
 */

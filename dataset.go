@@ -16,7 +16,8 @@ import (
 
 type Dataset interface {
     Meta() *pb.Dataset
-    Load(string) error
+    Search(int, math.Vector) ([]*pb.SearchResultItem, error)
+    Load(string, serde.Deserializer) error
 }
 
 type dataset struct {
@@ -25,7 +26,7 @@ type dataset struct {
     storage storage.Storage
 }
 
-func NewDataset(name, path string, index index.Index, storage storage.Storage) *dataset {
+func NewDataset(name, path string, index index.Index, storage storage.Storage) Dataset {
     return &dataset {
         meta: &pb.Dataset{
             Name: name,

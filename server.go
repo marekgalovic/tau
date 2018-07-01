@@ -17,11 +17,13 @@ type server struct {
     listener net.Listener
     grpcServer *grpc.Server
     
+    config *Config
     datasetsManager DatasetsManager
 }
 
-func NewServer(datasetsManager DatasetsManager) Server {
+func NewServer(config *Config, datasetsManager DatasetsManager) Server {
     s := &server{
+        config: config,
         datasetsManager: datasetsManager,
     }
 
@@ -34,7 +36,7 @@ func NewServer(datasetsManager DatasetsManager) Server {
 func (s *server) Start() error {
     var err error
 
-    s.listener, err = net.Listen("tcp", s.bindAddress())
+    s.listener, err = net.Listen("tcp", s.config.BindAddress())
     if err != nil {
         return err
     }
@@ -48,15 +50,11 @@ func (s *server) Stop() {
     s.listener.Close()
 }
 
-func (s *server) bindAddress() string {
-    return ":5555"
-}
-
 func (s *server) initializeGrpcServer() {
     s.grpcServer = grpc.NewServer()
 }
 
 func (s *server) registerServices() {
-    // pb.RegisterDatasetsServiceServer(s.grpcServer, newDatasetsService(s.datasetsManager))
+    pb.RegisterDatasetsManagerServer(s.grpcServer, s.datasetsManager)
     pb.RegisterSearchServiceServer(s.grpcServer, newSearchService(s.datasetsManager))
 }
