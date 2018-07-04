@@ -25,11 +25,13 @@ type dataset struct {
     storage storage.Storage
 }
 
-func NewDataset(name, path string, index index.Index, storage storage.Storage) Dataset {
+func newDataset(name, path string, numPartitions, numReplicas int, index index.Index, storage storage.Storage) Dataset {
     return &dataset {
         meta: &pb.Dataset{
             Name: name,
             Path: path,
+            NumPartitions: int32(numPartitions),
+            NumReplicas: int32(numReplicas),
             Index: index.ToProto(),
         },
         index: index,
@@ -37,8 +39,12 @@ func NewDataset(name, path string, index index.Index, storage storage.Storage) D
     }
 }
 
-func NewDatasetFromProto(proto *pb.Dataset, storage storage.Storage) Dataset {
-    return NewDataset(proto.Name, proto.Path, index.FromProto(proto.Index), storage)
+func newDatasetFromProto(proto *pb.Dataset, storage storage.Storage) Dataset {
+    return &dataset {
+        meta: proto,
+        index: index.FromProto(proto.Index),
+        storage: storage,
+    }
 }
 
 func (d *dataset) Meta() *pb.Dataset {

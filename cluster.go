@@ -22,7 +22,7 @@ type Cluster interface {
 
 type Node interface {
     Meta() *pb.Node
-    Conn() (*grpc.ClientConn, error)
+    Dial() (*grpc.ClientConn, error)
 }
 
 type cluster struct {
@@ -105,16 +105,11 @@ func (c *cluster) Register() error {
         return err
     }
 
-    nodeData, err := proto.Marshal(&pb.Node{Uuid: uuid, IpAddress: ipAddress})
+    nodeData, err := proto.Marshal(&pb.Node{Uuid: uuid, IpAddress: ipAddress, Port: c.config.Server.Port})
     if err != nil {
         return err
     }
-    nodeName, err := c.zk.CreateProtectedEphemeralSequential(filepath.Join(c.zkNodesPath(), "n"), nodeData, zk.WorldACL(zk.PermAll))
-    if err != nil {
-        return err
-    }
-
-    c.seqId, err = utils.ParseSeqId(nodeName)
+    _, err = c.zk.CreateProtectedEphemeralSequential(filepath.Join(c.zkNodesPath(), "n"), nodeData, zk.WorldACL(zk.PermAll))
 
     return err
 }
@@ -164,7 +159,7 @@ func (c *cluster) dialNode(address string) (*grpc.ClientConn, error) {
     }
 
     var err error
-    c.connCache[address], err = grpc.Dial(net.JoinHostPort(address, c.config.Server.Port), grpc.WithInsecure())
+    c.connCache[address], err = grpc.Dial(address, grpc.WithInsecure())
     if err != nil {
         return nil, err
     }
@@ -180,6 +175,6 @@ func (n *node) Meta() *pb.Node {
     return n.meta
 }
 
-func (n *node) Conn() (*grpc.ClientConn, error) {
-    return n.cluster.dialNode(n.meta.IpAddress)
+func (n *node) Dial() (*grpc.ClientConn, error) {
+    return n.cluster.dialNode(net.JoinHostPort(n.Meta().IpAddress, n.Meta().Port))
 }

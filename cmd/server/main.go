@@ -7,6 +7,7 @@ import (
     "github.com/marekgalovic/tau/index";
     "github.com/marekgalovic/tau/storage";
     "github.com/marekgalovic/tau/utils";
+    pb "github.com/marekgalovic/tau/protobuf";
 
     "github.com/samuel/go-zookeeper/zk";
     log "github.com/Sirupsen/logrus";
@@ -39,7 +40,15 @@ func main() {
         log.Fatal(err)
     }
 
-    if err := datasetsManager.CreateDataset("foo15", "./examples/data/random_*", index.NewBtreeIndex(256, "Euclidean", 5, 512)); err != nil {
+    d := &pb.Dataset {
+        Name: "foo22",
+        Path: "./examples/data/random_*",
+        NumPartitions: 10,
+        NumReplicas: 1,
+        Index: index.NewBtreeIndex(256, "Euclidean", 5, 512).ToProto(),
+    }
+
+    if err := datasetsManager.CreateDataset(d); err != nil {
         log.Fatal(err)
     }
 

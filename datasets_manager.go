@@ -2,17 +2,16 @@ package tau
 
 import (
     "fmt";
+    "sort";
     "errors";
     "context";
     "path/filepath";
 
-    "github.com/marekgalovic/tau/index";
     "github.com/marekgalovic/tau/storage";
     pb "github.com/marekgalovic/tau/protobuf";
 
     "github.com/samuel/go-zookeeper/zk";
     "github.com/golang/protobuf/proto";
-
     log "github.com/Sirupsen/logrus";
 )
 
@@ -24,9 +23,9 @@ var (
 type DatasetsManager interface {
     BuildPartition(context.Context, *pb.BuildPartitionRequest) (*pb.EmptyResponse, error)
     ListDatasets() ([]Dataset, error)
-    Exists(string) (bool, error)
+    DatasetExists(string) (bool, error)
     GetDataset(string) (Dataset, error)
-    CreateDataset(string, string, index.Index) error
+    CreateDataset(*pb.Dataset) error
 }
 
 type datasetsManager struct {
@@ -79,7 +78,7 @@ func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPart
     }
 
     go func() {
-        dataset := NewDatasetFromProto(req.Dataset, dm.storage)
+        dataset := newDatasetFromProto(req.Dataset, dm.storage)
         if err := dataset.Load(req.Files); err != nil {
             fmt.Println(err)
         }
@@ -87,6 +86,7 @@ func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPart
         dm.localPartitions[dataset.Meta().Name] = dataset
         log.Infof("Built local partition: %s", dataset.Meta().Name)
     }()
+
     return &pb.EmptyResponse{}, nil
 }
 
@@ -121,14 +121,14 @@ func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
     }, nil
 }
 
-func (dm *datasetsManager) Exists(name string) (bool, error) {
+func (dm *datasetsManager) DatasetExists(name string) (bool, error) {
     exists, _, err := dm.zk.Exists(filepath.Join(dm.zkDatasetsPath(), name))
 
     return exists, err
 }
 
-func (dm *datasetsManager) CreateDataset(name, path string, index index.Index) error {
-    exists, err := dm.Exists(name)
+func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
+    exists, err := dm.DatasetExists(dataset.GetName())
     if err != nil {
         return err
     }
@@ -136,30 +136,28 @@ func (dm *datasetsManager) CreateDataset(name, path string, index index.Index) e
         return DatasetAlreadyExistsErr
     }
 
-    dataset := NewDataset(name, path, index, dm.storage)
-    datasetMetadata, err := proto.Marshal(dataset.Meta())
-    if err != nil {
-        return err
-    }
-    _, err = dm.zk.Create(filepath.Join(dm.zkDatasetsPath(), name), datasetMetadata, int32(0), zk.WorldACL(zk.PermAll))
+    partitions, err := dm.getDatasetPartitions(dataset)
     if err != nil {
         return err
     }
 
-    partitions, err := dm.getPartitions(path)
+    datasetMetadata, err := proto.Marshal(dataset)
     if err != nil {
         return err
     }
+    if _, err = dm.zk.Create(filepath.Join(dm.zkDatasetsPath(), dataset.GetName()), datasetMetadata, int32(0), zk.WorldACL(zk.PermAll)); err != nil {
+        return err
+    }
+    if _, err := dm.zk.Create(filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions"), nil, int32(0), zk.WorldACL(zk.PermAll)); err != nil {
+        return err
+    }
 
-    for node, files := range partitions {
-        conn, err := node.Conn()
+    for i, partition := range partitions {
+        partitionData, err := proto.Marshal(partition)
         if err != nil {
             return err
         }
-        if _, err := pb.NewDatasetsManagerClient(conn).BuildPartition(context.Background(), &pb.BuildPartitionRequest {
-            Dataset: dataset.Meta(),
-            Files: files,
-        }); err != nil {
+        if _, err := dm.zk.Create(filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions", fmt.Sprintf("%d", i)), partitionData, int32(0), zk.WorldACL(zk.PermAll)); err != nil {
             return err
         }
     }
@@ -171,36 +169,28 @@ func (dm *datasetsManager) zkDatasetsPath() string {
     return filepath.Join(dm.config.Zookeeper.BasePath, "datasets")
 }
 
-func (dm *datasetsManager) getPartitions(path string) (map[Node][]string, error) {
-    files, err := dm.storage.ListFiles(path)
+func (dm *datasetsManager) getDatasetPartitions(dataset *pb.Dataset) ([]*pb.DatasetPartition, error) {
+    files, err := dm.storage.ListFiles(dataset.GetPath())
     if err != nil {
         return nil, err
     }
-    nodes, err := dm.cluster.ListNodes()
-    if err != nil {
-        return nil, err
+    sort.Strings(files)
+
+    numPartitions := int(dataset.GetNumPartitions())
+    if len(files) < numPartitions {
+        log.Warn("Number of files is less than the number of partitions")
+        numPartitions = len(files)
     }
 
-    if len(nodes) == 0 {
-        return nil, NoNodesAvailableErr
-    }
-
-    numFilesPerNode := int(float32(len(files)) / float32(len(nodes)))
-    if numFilesPerNode < 2 {
-        numFilesPerNode = 2
-    }
-
-    partitions := make(map[Node][]string, 0)
-    nodeIdx := 0
-    for i, file := range files {
-        if _, exists := partitions[nodes[nodeIdx]]; !exists {
-            partitions[nodes[nodeIdx]] = make([]string, 0)
+    partitions := make([]*pb.DatasetPartition, numPartitions)
+    numFilesPerPartition := numPartitions / len(files)
+    for i := 0; i < numPartitions; i++ {
+        lbIdx := i * numFilesPerPartition
+        ubIdx := i * numFilesPerPartition + numFilesPerPartition
+        if i == numPartitions - 1 {
+            ubIdx += len(files) - numPartitions * numFilesPerPartition
         }
-        partitions[nodes[nodeIdx]] = append(partitions[nodes[nodeIdx]], file)
-
-        if (i > 0) && (i % numFilesPerNode == 0) && (nodeIdx + 1 > len(nodes) - 1) {
-            nodeIdx++
-        }
+        partitions[i] = &pb.DatasetPartition{Files: files[lbIdx:ubIdx]}
     }
     return partitions, nil
 }
