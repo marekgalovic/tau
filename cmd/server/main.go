@@ -41,7 +41,7 @@ func main() {
     }
 
     d := &pb.Dataset {
-        Name: "foo34",
+        Name: "bar15",
         Path: "./examples/data/random_*",
         NumPartitions: 10,
         NumReplicas: 1,

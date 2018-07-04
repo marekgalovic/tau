@@ -9,6 +9,7 @@ import (
 
     "github.com/marekgalovic/tau/storage";
     pb "github.com/marekgalovic/tau/protobuf";
+    "github.com/marekgalovic/tau/utils";
 
     "github.com/samuel/go-zookeeper/zk";
     "github.com/golang/protobuf/proto";
@@ -36,6 +37,8 @@ type datasetsManager struct {
     storage storage.Storage
 
     stop chan struct{}
+    datasets map[string]Dataset
+    partitionManagers map[string]PartitionsManager
     localPartitions map[string]Dataset
 }
 
@@ -58,7 +61,14 @@ func NewDatasetsManager(config *Config, zkConn *zk.Conn, cluster Cluster, storag
 }
 
 func (dm *datasetsManager) Stop() {
+    dm.stopPartitionManagers()
     close(dm.stop)
+}
+
+func (dm *datasetsManager) stopPartitionManagers() {
+    for _, partitionManager := range dm.partitionManagers {
+        partitionManager.Stop()
+    }
 }
 
 func (dm *datasetsManager) bootstrapZk() error {
@@ -86,9 +96,57 @@ func (dm *datasetsManager) master() {
     select {
     case <- dm.cluster.NotifyWhenMaster():
         log.Info("Datasets manager master")
+        dm.datasets = make(map[string]Dataset)
+        dm.partitionManagers = make(map[string]PartitionsManager)
+
+        go dm.watchDatasets()
     case <- dm.stop:
         return
     }    
+}
+
+func (dm *datasetsManager) watchDatasets() {
+    for {
+        datasets, _, event, err := dm.zk.ChildrenW(dm.zkDatasetsPath())
+        if err != nil {
+            panic(err)
+        }
+        if err := dm.updateDatasets(datasets); err != nil {
+            panic(err)
+        }
+
+        select {
+        case <- event:
+            continue
+        case <- dm.stop:
+            return
+        }
+    }
+}
+
+func (dm *datasetsManager) updateDatasets(datasets []string) error {
+    updatedDatasets := utils.NewSet()
+    for _, dataset := range datasets {
+        updatedDatasets.Add(dataset)
+
+        if _, exists := dm.datasets[dataset]; !exists {
+            var err error
+            if dm.datasets[dataset], err = dm.GetDataset(dataset); err != nil {
+                return err
+            }
+            dm.partitionManagers[dataset] = newPartitionsManager(dm.datasets[dataset], dm.zk, dm.cluster)
+        }
+    }
+
+    for dataset, _ := range dm.datasets {
+        if !updatedDatasets.Contains(dataset) {
+            dm.partitionManagers[dataset].Stop()
+
+            delete(dm.datasets, dataset)
+            delete(dm.partitionManagers, dataset)
+        }
+    }
+    return nil
 }
 
 func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPartitionRequest) (*pb.EmptyResponse, error) {
@@ -125,7 +183,8 @@ func (dm *datasetsManager) ListDatasets() ([]Dataset, error) {
 }
 
 func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
-    datasetData, _, err := dm.zk.Get(filepath.Join(dm.zkDatasetsPath(), name))
+    zkPath := filepath.Join(dm.zkDatasetsPath(), name)
+    datasetData, _, err := dm.zk.Get(zkPath)
     if err != nil {
         return nil, err
     }
@@ -134,6 +193,7 @@ func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
     if err = proto.Unmarshal(datasetData, datasetMeta); err != nil {
         return nil, err
     }
+    datasetMeta.ZkPath = zkPath
 
     return &dataset {
         meta: datasetMeta,

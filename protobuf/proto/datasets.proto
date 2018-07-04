@@ -33,6 +33,7 @@ message Dataset {
     int32 num_partitions    = 3;
     int32 num_replicas      = 4;
     Index index             = 5;
+    string zk_path          = 6;
 }
 
 message DatasetPartition {
