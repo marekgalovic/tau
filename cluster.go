@@ -31,6 +31,7 @@ type cluster struct {
     config *Config
     zk *zk.Conn
     seqId int64
+    stop chan struct{}
 
     isMasterNotif chan bool
     connCache map[string]*grpc.ClientConn
@@ -52,6 +53,7 @@ func NewCluster(config *Config, zkConn *zk.Conn) (Cluster, error) {
     c := &cluster{
         config: config,
         zk: zkConn,
+        stop: make(chan struct{}),
         isMasterNotif: make(chan bool),
         connCache: make(map[string]*grpc.ClientConn),
     }
@@ -156,7 +158,12 @@ func (c *cluster) watchMaster() {
         }
 
         log.Infof("Following candidate master: `%s`", candidate.Meta().GetZkPath())
-        <- event
+        select {
+        case <- event:
+            continue
+        case <- c.stop:
+            return
+        }
     }
 }
 
@@ -170,6 +177,8 @@ func (c *cluster) closeClientConnections() error {
 }
 
 func (c *cluster) Close() error {
+    close(c.stop)
+
     if err := c.closeClientConnections(); err != nil {
         return err
     }

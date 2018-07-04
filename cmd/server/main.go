@@ -33,6 +33,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
+    defer datasetsManager.Stop()
 
     server := tau.NewServer(config, datasetsManager)
     if err := server.Start(); err != nil {
@@ -40,7 +41,7 @@ func main() {
     }
 
     d := &pb.Dataset {
-        Name: "foo32",
+        Name: "foo34",
         Path: "./examples/data/random_*",
         NumPartitions: 10,
         NumReplicas: 1,

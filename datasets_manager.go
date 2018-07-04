@@ -21,6 +21,7 @@ var (
 )
 
 type DatasetsManager interface {
+    Stop()
     BuildPartition(context.Context, *pb.BuildPartitionRequest) (*pb.EmptyResponse, error)
     ListDatasets() ([]Dataset, error)
     DatasetExists(string) (bool, error)
@@ -34,6 +35,7 @@ type datasetsManager struct {
     cluster Cluster
     storage storage.Storage
 
+    stop chan struct{}
     localPartitions map[string]Dataset
 }
 
@@ -43,6 +45,7 @@ func NewDatasetsManager(config *Config, zkConn *zk.Conn, cluster Cluster, storag
         zk: zkConn,
         cluster: cluster,
         storage: storage,
+        stop: make(chan struct{}),
         localPartitions: make(map[string]Dataset),
     }
     if err := dm.bootstrapZk(); err != nil {
@@ -52,6 +55,10 @@ func NewDatasetsManager(config *Config, zkConn *zk.Conn, cluster Cluster, storag
     go dm.master()
 
     return dm, nil
+}
+
+func (dm *datasetsManager) Stop() {
+    close(dm.stop)
 }
 
 func (dm *datasetsManager) bootstrapZk() error {
@@ -76,8 +83,12 @@ func (dm *datasetsManager) bootstrapZk() error {
 }
 
 func (dm *datasetsManager) master() {
-    <-dm.cluster.NotifyWhenMaster()
-    log.Info("Datasets manager master")
+    select {
+    case <- dm.cluster.NotifyWhenMaster():
+        log.Info("Datasets manager master")
+    case <- dm.stop:
+        return
+    }    
 }
 
 func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPartitionRequest) (*pb.EmptyResponse, error) {
