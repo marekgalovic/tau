@@ -2,7 +2,9 @@ syntax = "proto3";
 package tau;
 
 message Node {
-    string uuid         = 2;
-    string ip_address   = 3;
-    string port         = 4;
+    string zk_path      = 1;
+    int64 seqId         = 2;
+    string uuid         = 3;
+    string ip_address   = 4;
+    string port         = 5;
 }

@@ -15,17 +15,16 @@ import (
 
 func main() {
     config := tau.NewConfig()
+    config.Server.Port = "5556"
 
     zkConn, _, err := zk.Connect(config.Zookeeper.Nodes, 1 * time.Second)
     if err != nil {
         log.Fatal(err)
     }
+    defer zkConn.Close()
 
     cluster, err := tau.NewCluster(config, zkConn)
     if err != nil {
-        log.Fatal(err)
-    }
-    if err := cluster.Register(); err != nil {
         log.Fatal(err)
     }
     defer cluster.Close()
@@ -41,7 +40,7 @@ func main() {
     }
 
     d := &pb.Dataset {
-        Name: "foo22",
+        Name: "foo32",
         Path: "./examples/data/random_*",
         NumPartitions: 10,
         NumReplicas: 1,

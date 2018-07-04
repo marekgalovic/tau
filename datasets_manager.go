@@ -48,6 +48,9 @@ func NewDatasetsManager(config *Config, zkConn *zk.Conn, cluster Cluster, storag
     if err := dm.bootstrapZk(); err != nil {
         return nil, err
     }
+
+    go dm.master()
+
     return dm, nil
 }
 
@@ -72,6 +75,11 @@ func (dm *datasetsManager) bootstrapZk() error {
     return nil
 }
 
+func (dm *datasetsManager) master() {
+    <-dm.cluster.NotifyWhenMaster()
+    log.Info("Datasets manager master")
+}
+
 func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPartitionRequest) (*pb.EmptyResponse, error) {
     if _, exists := dm.localPartitions[req.Dataset.Name]; exists {
         return &pb.EmptyResponse{}, nil
@@ -79,7 +87,7 @@ func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPart
 
     go func() {
         dataset := newDatasetFromProto(req.Dataset, dm.storage)
-        if err := dataset.Load(req.Files); err != nil {
+        if err := dataset.Load(req.Partition.Files); err != nil {
             fmt.Println(err)
         }
 

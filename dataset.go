@@ -15,6 +15,7 @@ import (
 
 type Dataset interface {
     Meta() *pb.Dataset
+    Partitions() (*pb.DatasetPartition, error)
     Search(int, math.Vector) ([]*pb.SearchResultItem, error)
     Load([]string) error
 }
@@ -49,6 +50,10 @@ func newDatasetFromProto(proto *pb.Dataset, storage storage.Storage) Dataset {
 
 func (d *dataset) Meta() *pb.Dataset {
     return d.meta
+}
+
+func (d *dataset) Partitions() (*pb.DatasetPartition, error) {
+    return nil, nil
 }
 
 func (d *dataset) Search(k int, query math.Vector) ([]*pb.SearchResultItem, error) {
