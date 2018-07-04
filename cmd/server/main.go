@@ -27,16 +27,19 @@ func main() {
     if err := cluster.Register(); err != nil {
         log.Fatal(err)
     }
+    defer cluster.Close()
 
     datasetsManager, err := tau.NewDatasetsManager(config, zkConn, cluster, storage.NewLocal())
     if err != nil {
         log.Fatal(err)
     }
 
-    log.Info(datasetsManager.CreateDataset("foo1", "./examples/data/random_*", index.NewBtreeIndex(256, "Euclidean", 5, 512)))
-
     server := tau.NewServer(config, datasetsManager)
     if err := server.Start(); err != nil {
+        log.Fatal(err)
+    }
+
+    if err := datasetsManager.CreateDataset("foo15", "./examples/data/random_*", index.NewBtreeIndex(256, "Euclidean", 5, 512)); err != nil {
         log.Fatal(err)
     }
 

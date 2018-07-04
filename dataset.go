@@ -2,7 +2,6 @@ package tau
 
 import (
     "fmt";
-    "os";
     "bufio";
     "strings";
     "crypto/sha256";
@@ -17,7 +16,7 @@ import (
 type Dataset interface {
     Meta() *pb.Dataset
     Search(int, math.Vector) ([]*pb.SearchResultItem, error)
-    Load(string, serde.Deserializer) error
+    Load([]string) error
 }
 
 type dataset struct {
@@ -38,6 +37,10 @@ func NewDataset(name, path string, index index.Index, storage storage.Storage) D
     }
 }
 
+func NewDatasetFromProto(proto *pb.Dataset, storage storage.Storage) Dataset {
+    return NewDataset(proto.Name, proto.Path, index.FromProto(proto.Index), storage)
+}
+
 func (d *dataset) Meta() *pb.Dataset {
     return d.meta
 }
@@ -46,26 +49,18 @@ func (d *dataset) Search(k int, query math.Vector) ([]*pb.SearchResultItem, erro
     return nil, nil
 }
 
-func (d *dataset) Load(path string, deserializer serde.Deserializer) error {
-    files, err := d.storage.ListFiles(path)
-    if err != nil {
-        return err
-    }
-
-    return d.loadLocal(files, deserializer)
-}
-
-func (d *dataset) loadLocal(files []string, deserializer serde.Deserializer) error {
-    if err := d.populateIndex(files, deserializer); err != nil {
+func (d *dataset) Load(files []string) error {
+    if err := d.populateIndex(files, serde.NewCsv(",")); err != nil {
         return err
     }
 
     d.index.Build()
 
-    indexFile, err := os.Create(fmt.Sprintf("/tmp/%s.tau_index", d.indexFileName(files)))
+    indexFile, err := d.storage.Writer(d.indexFileName(files))
     if err != nil {
         return err
     }
+
     if err := d.index.Save(indexFile); err != nil {
         return err
     }

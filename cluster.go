@@ -1,6 +1,7 @@
 package tau
 
 import (
+    "net";
     "path/filepath";
 
     pb "github.com/marekgalovic/tau/protobuf";
@@ -8,24 +9,47 @@ import (
     
     "github.com/samuel/go-zookeeper/zk";
     "github.com/golang/protobuf/proto";
+    "google.golang.org/grpc";
 )
 
 type Cluster interface {
+    Close() error
     Register() error
     NodesCount() (int, error)
-    ListNodes() ([]*pb.Node, error)
+    ListNodes() ([]Node, error)
+    GetNode(string) (Node, error)
+}
+
+type Node interface {
+    Meta() *pb.Node
+    Conn() (*grpc.ClientConn, error)
 }
 
 type cluster struct {
     config *Config
     zk *zk.Conn
     seqId int64
+
+    connCache map[string]*grpc.ClientConn
+}
+
+type node struct {
+    meta *pb.Node
+    cluster *cluster
+}
+
+func newNode(meta *pb.Node, cluster *cluster) Node {
+    return &node {
+        meta: meta,
+        cluster: cluster,
+    }
 }
 
 func NewCluster(config *Config, zkConn *zk.Conn) (Cluster, error) {
     c := &cluster{
         config: config,
         zk: zkConn,
+        connCache: make(map[string]*grpc.ClientConn),
     }
 
     if err := c.bootstrapZk(); err != nil {
@@ -51,6 +75,22 @@ func (c *cluster) bootstrapZk() error {
                 return err
             }
         }   
+    }
+    return nil
+}
+
+func (c *cluster) closeClientConnections() error {
+    for _, conn := range c.connCache {
+        if err := conn.Close(); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func (c *cluster) Close() error {
+    if err := c.closeClientConnections(); err != nil {
+        return err
     }
     return nil
 }
@@ -87,13 +127,13 @@ func (c *cluster) NodesCount() (int, error) {
     return len(nodeNames), nil
 }
 
-func (c *cluster) ListNodes() ([]*pb.Node, error) {
+func (c *cluster) ListNodes() ([]Node, error) {
     nodeNames, _, err := c.zk.Children(c.zkNodesPath())
     if err != nil {
         return nil, err
     }
 
-    nodes := make([]*pb.Node, len(nodeNames))
+    nodes := make([]Node, len(nodeNames))
     for i, nodeName := range nodeNames {
         var err error
         if nodes[i], err = c.GetNode(nodeName); err != nil {
@@ -104,7 +144,7 @@ func (c *cluster) ListNodes() ([]*pb.Node, error) {
     return nodes, nil
 }
 
-func (c *cluster) GetNode(nodeName string) (*pb.Node, error) {
+func (c *cluster) GetNode(nodeName string) (Node, error) {
     nodeData, _, err := c.zk.Get(filepath.Join(c.zkNodesPath(), nodeName))
     if err != nil {
         return nil, err
@@ -115,9 +155,31 @@ func (c *cluster) GetNode(nodeName string) (*pb.Node, error) {
         return nil, err
     }
 
-    return node, nil
+    return newNode(node, c), nil
+}
+
+func (c *cluster) dialNode(address string) (*grpc.ClientConn, error) {
+    if conn, exists := c.connCache[address]; exists {
+        return conn, nil
+    }
+
+    var err error
+    c.connCache[address], err = grpc.Dial(net.JoinHostPort(address, c.config.Server.Port), grpc.WithInsecure())
+    if err != nil {
+        return nil, err
+    }
+
+    return c.connCache[address], nil
 }
 
 func (c *cluster) zkNodesPath() string {
     return filepath.Join(c.config.Zookeeper.BasePath, "nodes")
+}
+
+func (n *node) Meta() *pb.Node {
+    return n.meta
+}
+
+func (n *node) Conn() (*grpc.ClientConn, error) {
+    return n.cluster.dialNode(n.meta.IpAddress)
 }

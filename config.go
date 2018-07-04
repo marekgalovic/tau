@@ -5,13 +5,14 @@ import (
 )
 
 type Config struct {
+    IndexPath string
     Server ServerConfig
     Zookeeper ZookeeperConfig
 }
 
 type ServerConfig struct {
     Address string
-    Port int
+    Port string
 }
 
 type ZookeeperConfig struct {
@@ -21,9 +22,10 @@ type ZookeeperConfig struct {
 
 func NewConfig() *Config {
     return &Config {
+        IndexPath: "/tmp",
         Server: ServerConfig {
             Address: "",
-            Port: 5555,
+            Port: "5555",
         },
         Zookeeper: ZookeeperConfig {
             Nodes: []string{"127.0.0.1:2181"},
@@ -33,5 +35,5 @@ func NewConfig() *Config {
 }
 
 func (c *Config) BindAddress() string {
-    return fmt.Sprintf("%s:%d", c.Server.Address, c.Server.Port)
+    return fmt.Sprintf("%s:%s", c.Server.Address, c.Server.Port)
 }
