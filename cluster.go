@@ -3,6 +3,7 @@ package tau
 import (
     "net";
     "math";
+    "context";
     "path/filepath";
 
     pb "github.com/marekgalovic/tau/protobuf";
@@ -15,7 +16,6 @@ import (
 )
 
 type Cluster interface {
-    Close() error
     NotifyWhenMaster() <-chan bool
     NodesCount() (int, error)
     ListNodes() ([]Node, error)
@@ -28,10 +28,10 @@ type Node interface {
 }
 
 type cluster struct {
+    ctx context.Context
     config *Config
     zk *zk.Conn
     seqId int64
-    stop chan struct{}
 
     isMasterNotif chan bool
     connCache map[string]*grpc.ClientConn
@@ -49,11 +49,11 @@ func newNode(meta *pb.Node, cluster *cluster) Node {
     }
 }
 
-func NewCluster(config *Config, zkConn *zk.Conn) (Cluster, error) {
+func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, error) {
     c := &cluster{
+        ctx: ctx,
         config: config,
         zk: zkConn,
-        stop: make(chan struct{}),
         isMasterNotif: make(chan bool),
         connCache: make(map[string]*grpc.ClientConn),
     }
@@ -66,6 +66,7 @@ func NewCluster(config *Config, zkConn *zk.Conn) (Cluster, error) {
     }
 
     go c.watchMaster()
+    go c.closeClientConnections()
 
     return c, nil
 }
@@ -161,28 +162,21 @@ func (c *cluster) watchMaster() {
         select {
         case <- event:
             continue
-        case <- c.stop:
+        case <- c.ctx.Done():
             return
         }
     }
 }
 
-func (c *cluster) closeClientConnections() error {
-    for _, conn := range c.connCache {
-        if err := conn.Close(); err != nil {
-            return err
+func (c *cluster) closeClientConnections() {
+    select {
+    case <- c.ctx.Done():
+        for _, conn := range c.connCache {
+            if err := conn.Close(); err != nil {
+                log.Error(err)
+            }
         }
     }
-    return nil
-}
-
-func (c *cluster) Close() error {
-    close(c.stop)
-
-    if err := c.closeClientConnections(); err != nil {
-        return err
-    }
-    return nil
 }
 
 func (c *cluster) NotifyWhenMaster() <-chan bool {

@@ -2,6 +2,7 @@ package main
 
 import (
     "time";
+    "context";
     
     "github.com/marekgalovic/tau";
     "github.com/marekgalovic/tau/index";
@@ -23,17 +24,17 @@ func main() {
     }
     defer zkConn.Close()
 
-    cluster, err := tau.NewCluster(config, zkConn)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer cluster.Close()
+    ctx, closeFunc := context.WithCancel(context.Background())
 
-    datasetsManager, err := tau.NewDatasetsManager(config, zkConn, cluster, storage.NewLocal())
+    cluster, err := tau.NewCluster(ctx, config, zkConn)
     if err != nil {
         log.Fatal(err)
     }
-    defer datasetsManager.Stop()
+
+    datasetsManager, err := tau.NewDatasetsManager(ctx, config, zkConn, cluster, storage.NewLocal())
+    if err != nil {
+        log.Fatal(err)
+    }
 
     server := tau.NewServer(config, datasetsManager)
     if err := server.Start(); err != nil {
@@ -41,17 +42,24 @@ func main() {
     }
 
     d := &pb.Dataset {
-        Name: "bar15",
+        Name: "b7",
         Path: "./examples/data/random_*",
         NumPartitions: 10,
         NumReplicas: 1,
         Index: index.NewBtreeIndex(256, "Euclidean", 5, 512).ToProto(),
     }
 
+    // log.Info(d)
+
     if err := datasetsManager.CreateDataset(d); err != nil {
         log.Fatal(err)
     }
 
+    <- time.After(5 * time.Second)
+
+    log.Info(datasetsManager.DeleteDataset("b7"))
+
     <- utils.InterruptSignal()
     server.Stop()
+    closeFunc()
 }

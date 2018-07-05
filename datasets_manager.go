@@ -22,33 +22,33 @@ var (
 )
 
 type DatasetsManager interface {
-    Stop()
     BuildPartition(context.Context, *pb.BuildPartitionRequest) (*pb.EmptyResponse, error)
     ListDatasets() ([]Dataset, error)
     DatasetExists(string) (bool, error)
     GetDataset(string) (Dataset, error)
     CreateDataset(*pb.Dataset) error
+    DeleteDataset(string) error
 }
 
 type datasetsManager struct {
+    ctx context.Context
     config *Config
     zk *zk.Conn
     cluster Cluster
     storage storage.Storage
 
-    stop chan struct{}
     datasets map[string]Dataset
     partitionManagers map[string]PartitionsManager
     localPartitions map[string]Dataset
 }
 
-func NewDatasetsManager(config *Config, zkConn *zk.Conn, cluster Cluster, storage storage.Storage) (DatasetsManager, error) {
+func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cluster Cluster, storage storage.Storage) (DatasetsManager, error) {
     dm := &datasetsManager {
+        ctx: ctx,
         config: config,
         zk: zkConn,
         cluster: cluster,
         storage: storage,
-        stop: make(chan struct{}),
         localPartitions: make(map[string]Dataset),
     }
     if err := dm.bootstrapZk(); err != nil {
@@ -58,17 +58,6 @@ func NewDatasetsManager(config *Config, zkConn *zk.Conn, cluster Cluster, storag
     go dm.master()
 
     return dm, nil
-}
-
-func (dm *datasetsManager) Stop() {
-    dm.stopPartitionManagers()
-    close(dm.stop)
-}
-
-func (dm *datasetsManager) stopPartitionManagers() {
-    for _, partitionManager := range dm.partitionManagers {
-        partitionManager.Stop()
-    }
 }
 
 func (dm *datasetsManager) bootstrapZk() error {
@@ -100,7 +89,7 @@ func (dm *datasetsManager) master() {
         dm.partitionManagers = make(map[string]PartitionsManager)
 
         go dm.watchDatasets()
-    case <- dm.stop:
+    case <- dm.ctx.Done():
         return
     }    
 }
@@ -118,7 +107,7 @@ func (dm *datasetsManager) watchDatasets() {
         select {
         case <- event:
             continue
-        case <- dm.stop:
+        case <- dm.ctx.Done():
             return
         }
     }
@@ -134,7 +123,7 @@ func (dm *datasetsManager) updateDatasets(datasets []string) error {
             if dm.datasets[dataset], err = dm.GetDataset(dataset); err != nil {
                 return err
             }
-            dm.partitionManagers[dataset] = newPartitionsManager(dm.datasets[dataset], dm.zk, dm.cluster)
+            dm.partitionManagers[dataset] = newPartitionsManager(dm.ctx, dm.datasets[dataset], dm.zk, dm.cluster)
         }
     }
 
@@ -224,11 +213,10 @@ func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
     if err != nil {
         return err
     }
-    if _, err = dm.zk.Create(filepath.Join(dm.zkDatasetsPath(), dataset.GetName()), datasetMetadata, int32(0), zk.WorldACL(zk.PermAll)); err != nil {
-        return err
-    }
-    if _, err := dm.zk.Create(filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions"), nil, int32(0), zk.WorldACL(zk.PermAll)); err != nil {
-        return err
+
+    requests := []interface{}{
+        &zk.CreateRequest{Path: filepath.Join(dm.zkDatasetsPath(), dataset.GetName()), Data: datasetMetadata, Flags: int32(0), Acl: zk.WorldACL(zk.PermAll)},
+        &zk.CreateRequest{Path: filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions"), Data: nil, Flags: int32(0), Acl: zk.WorldACL(zk.PermAll)},
     }
 
     for i, partition := range partitions {
@@ -236,12 +224,22 @@ func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
         if err != nil {
             return err
         }
-        if _, err := dm.zk.Create(filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions", fmt.Sprintf("%d", i)), partitionData, int32(0), zk.WorldACL(zk.PermAll)); err != nil {
-            return err
-        }
+
+        requests = append(requests, &zk.CreateRequest{
+            Path: filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions", fmt.Sprintf("%d", i)),
+            Data: partitionData,
+            Flags: int32(0),
+            Acl: zk.WorldACL(zk.PermAll),
+        })
     }
 
-    return nil
+    _, err = dm.zk.Multi(requests...)
+
+    return err
+}
+
+func (dm *datasetsManager) DeleteDataset(name string) error {
+    return utils.ZkRecursiveDelete(dm.zk, filepath.Join(dm.zkDatasetsPath(), name))
 }
 
 func (dm *datasetsManager) zkDatasetsPath() string {
