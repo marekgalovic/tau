@@ -5,9 +5,9 @@ import (
 )
 
 type Broadcaster interface {
+    Close()
     Send(interface{})
     Listen() <-chan interface{}
-    Close()
 }
 
 type baseBroadcaster struct {

@@ -4,6 +4,8 @@ import (
     "context";
     "path/filepath";
 
+    pb "github.com/marekgalovic/tau/protobuf";
+
     "github.com/samuel/go-zookeeper/zk";
     log "github.com/Sirupsen/logrus";
 )
@@ -19,6 +21,10 @@ type partitionsManager struct {
     dataset Dataset
     zk *zk.Conn
     cluster Cluster
+
+    partitions map[string]*pb.DatasetPartition
+    partitionNodes map[string]Node
+    nodePartitions map[string]*pb.DatasetPartition
 }
 
 func newPartitionsManager(ctx context.Context, dataset Dataset, zkConn *zk.Conn, cluster Cluster) PartitionsManager {
@@ -30,6 +36,9 @@ func newPartitionsManager(ctx context.Context, dataset Dataset, zkConn *zk.Conn,
         dataset: dataset,
         zk: zkConn,
         cluster: cluster,
+        partitions: make(map[string]*pb.DatasetPartition),
+        partitionNodes: make(map[string]Node),
+        nodePartitions: make(map[string]*pb.DatasetPartition),
     }
 
     go pm.watchPartitions()

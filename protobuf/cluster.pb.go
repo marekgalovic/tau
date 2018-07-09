@@ -20,6 +20,7 @@ It has these top-level messages:
 	Dataset
 	DatasetPartition
 	BuildPartitionRequest
+	LoadPartitionRequest
 	SearchRequest
 	SearchResultItem
 */

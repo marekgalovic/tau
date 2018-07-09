@@ -37,12 +37,19 @@ message Dataset {
 }
 
 message DatasetPartition {
-    repeated string files = 1;
+    int32 id                = 1;
+    repeated string files   = 2;
 }
 
 message BuildPartitionRequest {
     Dataset dataset             = 1;
     DatasetPartition partition  = 2;
+}
+
+message LoadPartitionRequest {
+    Dataset dataset     = 1;
+    int32 partition_id  = 2;
+    string index_path   = 3;
 }
 
 

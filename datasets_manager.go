@@ -135,6 +135,10 @@ func (dm *datasetsManager) updateDatasets(datasets []string) error {
     return nil
 }
 
+func (dm *datasetsManager) LoadPartition(ctx context.Context, req *pb.LoadPartitionRequest) (*pb.EmptyResponse, error) {
+    return nil, nil
+}
+
 func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPartitionRequest) (*pb.EmptyResponse, error) {
     if _, exists := dm.localPartitions[req.Dataset.Name]; exists {
         return &pb.EmptyResponse{}, nil
@@ -259,7 +263,7 @@ func (dm *datasetsManager) getDatasetPartitions(dataset *pb.Dataset) ([]*pb.Data
         if i == numPartitions - 1 {
             ubIdx += len(files) - numPartitions * numFilesPerPartition
         }
-        partitions[i] = &pb.DatasetPartition{Files: files[lbIdx:ubIdx]}
+        partitions[i] = &pb.DatasetPartition{Id: int32(i), Files: files[lbIdx:ubIdx]}
     }
     return partitions, nil
 }
