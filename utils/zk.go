@@ -4,6 +4,7 @@ import (
     "fmt";
     "regexp";
     "strconv";
+    "strings";
     "path/filepath";
 
     "github.com/samuel/go-zookeeper/zk";
@@ -18,6 +19,35 @@ func ParseSeqId(znode string) (int64, error) {
     }
 
     return strconv.ParseInt(seqIdMatch[1], 10, 64)
+}
+
+func ZkCreatePath(zkConn *zk.Conn, path string, data []byte, flags int32, acl []zk.ACL) error {
+    pathParts := strings.Split(strings.TrimLeft(path, "/"), "/")
+
+    requests := make([]interface{}, 0)
+    for i := 1; i <= len(pathParts); i++ {
+        partialPath := fmt.Sprintf("/%s", filepath.Join(pathParts[:i]...))
+        exists, _, err := zkConn.Exists(partialPath)
+        if err != nil {
+            return err
+        }
+        if exists {
+            continue
+        }
+
+        request := &zk.CreateRequest{Path: partialPath, Data: nil, Flags: flags, Acl: acl}
+        if i == len(pathParts){
+            request.Data = data
+        }
+        requests = append(requests, request)
+    }
+
+    if len(requests) == 0 {
+        return nil
+    }
+
+    _, err := zkConn.Multi(requests...)
+    return err
 }
 
 func deleteRequests(zkConn *zk.Conn, path string) ([]interface{}, error) {

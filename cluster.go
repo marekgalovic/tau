@@ -15,11 +15,17 @@ import (
     log "github.com/Sirupsen/logrus";
 )
 
+const (
+    EventNodeCreated int32 = 1
+    EventNodeDeleted int32 = 2
+)
+
 type Cluster interface {
     NotifyWhenMaster() <-chan bool
     NodesCount() (int, error)
     ListNodes() ([]Node, error)
     GetNode(string) (Node, error)
+    NodeChanges() <-chan interface{}
 }
 
 type Node interface {
@@ -32,6 +38,8 @@ type cluster struct {
     config *Config
     zk *zk.Conn
     seqId int64
+    nodes map[string]Node
+    nodeChangesNotifications utils.Broadcaster
 
     isMasterNotif chan bool
     connCache map[string]*grpc.ClientConn
@@ -40,6 +48,11 @@ type cluster struct {
 type node struct {
     meta *pb.Node
     cluster *cluster
+}
+
+type NodesChangedNotification struct {
+    Event int32
+    Node Node
 }
 
 func newNode(meta *pb.Node, cluster *cluster) Node {
@@ -54,6 +67,8 @@ func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, 
         ctx: ctx,
         config: config,
         zk: zkConn,
+        nodes: make(map[string]Node),
+        nodeChangesNotifications: utils.NewThreadSafeBroadcast(),
         isMasterNotif: make(chan bool),
         connCache: make(map[string]*grpc.ClientConn),
     }
@@ -65,6 +80,7 @@ func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, 
         return nil, err
     }
 
+    go c.watchNodes()
     go c.watchMaster()
     go c.closeClientConnections()
 
@@ -73,21 +89,17 @@ func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, 
 
 func (c *cluster) bootstrapZk() error {
     paths := []string{
-        c.config.Zookeeper.BasePath,
         c.zkNodesPath(),
     }
 
     for _, path := range paths {
-        exists, _, err := c.zk.Exists(path)
+        err := utils.ZkCreatePath(c.zk, path, nil, int32(0), zk.WorldACL(zk.PermAll))
+        if err == zk.ErrNodeExists {
+            continue
+        }
         if err != nil {
             return err
-        }
-        if !exists {
-            _, err = c.zk.Create(path, nil, int32(0), zk.WorldACL(zk.PermAll))
-            if err != nil {
-                return err
-            }
-        }   
+        } 
     }
     return nil
 }
@@ -113,6 +125,57 @@ func (c *cluster) register() error {
 
     c.seqId, err = utils.ParseSeqId(nodePath)
     return err
+}
+
+func (c *cluster) watchNodes() {
+    for {
+        nodes, _, event, err := c.zk.ChildrenW(c.zkNodesPath())
+        if err != nil {
+            panic(err)
+        }
+        if err := c.updateNodes(nodes); err != nil {
+            panic(err)
+        }
+
+        select {
+        case <- event:
+            continue
+        case <- c.ctx.Done():
+            return
+        }
+    }
+}
+
+func (c *cluster) updateNodes(nodes []string) error {
+    updatedNodes := utils.NewSet()
+    for _, nodeName := range nodes {
+        updatedNodes.Add(nodeName)
+
+        if _, exists := c.nodes[nodeName]; !exists {
+            node, err := c.GetNode(nodeName)
+            if err != nil {
+                return err
+            }
+            c.nodes[nodeName] = node
+
+            c.nodeChangesNotifications.Send(&NodesChangedNotification{Event: EventNodeCreated, Node: node})
+            log.WithFields(log.Fields{
+                "uuid": node.Meta().GetUuid(),
+                "ip": node.Meta().GetIpAddress(),
+            }).Info("New cluster node")
+        }
+    }
+
+    for nodeName, node := range c.nodes {
+        if !updatedNodes.Contains(nodeName) {
+            delete(c.nodes, nodeName)
+            c.nodeChangesNotifications.Send(&NodesChangedNotification{Event: EventNodeDeleted, Node: node})
+            log.WithFields(log.Fields{
+                "uuid": node.Meta().GetUuid(),
+            }).Info("Cluster node deleted")
+        }
+    }
+    return nil
 }
 
 func (c *cluster) watchMaster() {
@@ -158,7 +221,9 @@ func (c *cluster) watchMaster() {
             panic("Candidate node does not exist")
         }
 
-        log.Infof("Following candidate master: `%s`", candidate.Meta().GetZkPath())
+        log.WithFields(log.Fields{
+            "zk_path": candidate.Meta().GetZkPath(),
+        }).Info("Following candidate master")
         select {
         case <- event:
             continue
@@ -201,7 +266,7 @@ func (c *cluster) ListNodes() ([]Node, error) {
     for i, nodeName := range nodeNames {
         var err error
         if nodes[i], err = c.GetNode(nodeName); err != nil {
-            return nil,  err
+            return nil, err
         }
     }
 
@@ -226,6 +291,10 @@ func (c *cluster) GetNode(nodeName string) (Node, error) {
     }
 
     return newNode(node, c), nil
+}
+
+func (c *cluster) NodeChanges() <-chan interface{} {
+    return c.nodeChangesNotifications.Listen()
 }
 
 func (c *cluster) dialNode(address string) (*grpc.ClientConn, error) {

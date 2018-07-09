@@ -16,7 +16,7 @@ import (
 
 func main() {
     config := tau.NewConfig()
-    config.Server.Port = "5556"
+    // config.Server.Port = "5556"
 
     zkConn, _, err := zk.Connect(config.Zookeeper.Nodes, 1 * time.Second)
     if err != nil {
@@ -42,7 +42,7 @@ func main() {
     }
 
     d := &pb.Dataset {
-        Name: "b7",
+        Name: "b9",
         Path: "./examples/data/random_*",
         NumPartitions: 10,
         NumReplicas: 1,
@@ -55,9 +55,9 @@ func main() {
         log.Fatal(err)
     }
 
-    <- time.After(5 * time.Second)
+    <- time.After(1 * time.Second)
 
-    log.Info(datasetsManager.DeleteDataset("b7"))
+    log.Info(datasetsManager.DeleteDataset("b9"))
 
     <- utils.InterruptSignal()
     server.Stop()

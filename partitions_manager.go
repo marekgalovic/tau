@@ -33,6 +33,7 @@ func newPartitionsManager(ctx context.Context, dataset Dataset, zkConn *zk.Conn,
     }
 
     go pm.watchPartitions()
+    go pm.watchNodes()
 
     return pm
 }
@@ -62,7 +63,23 @@ func (pm *partitionsManager) watchPartitions() {
     }
 }
 
+func (pm *partitionsManager) watchNodes() {
+    notifications := pm.cluster.NodeChanges()
+
+    for {
+        select {
+        case notification := <- notifications:
+            notification = notification.(*NodesChangedNotification)
+            log.Info("PM Nodes Update", notification)
+            continue
+        case <- pm.ctx.Done():
+            return
+        }
+    }
+}
+
 func (pm *partitionsManager) updatePartitions(partitions []string) {
+    log.Info(partitions)
     // log.Info(pm.dataset.Meta().GetName(), partitions)
 }
 

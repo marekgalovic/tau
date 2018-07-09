@@ -37,6 +37,7 @@ type datasetsManager struct {
     cluster Cluster
     storage storage.Storage
 
+    // Master
     datasets map[string]Dataset
     partitionManagers map[string]PartitionsManager
     localPartitions map[string]Dataset
@@ -62,21 +63,17 @@ func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cl
 
 func (dm *datasetsManager) bootstrapZk() error {
     paths := []string{
-        dm.config.Zookeeper.BasePath,
         dm.zkDatasetsPath(),
     }
 
     for _, path := range paths {
-        exists, _, err := dm.zk.Exists(path)
+        err := utils.ZkCreatePath(dm.zk, path, nil, int32(0), zk.WorldACL(zk.PermAll))
+        if err == zk.ErrNodeExists {
+            continue
+        }
         if err != nil {
             return err
-        }
-        if !exists {
-            _, err = dm.zk.Create(path, nil, int32(0), zk.WorldACL(zk.PermAll))
-            if err != nil {
-                return err
-            }
-        }   
+        }  
     }
     return nil
 }
@@ -196,14 +193,6 @@ func (dm *datasetsManager) DatasetExists(name string) (bool, error) {
 }
 
 func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
-    exists, err := dm.DatasetExists(dataset.GetName())
-    if err != nil {
-        return err
-    }
-    if exists {
-        return DatasetAlreadyExistsErr
-    }
-
     partitions, err := dm.getDatasetPartitions(dataset)
     if err != nil {
         return err
@@ -234,6 +223,9 @@ func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
     }
 
     _, err = dm.zk.Multi(requests...)
+    if err == zk.ErrNodeExists {
+        return DatasetAlreadyExistsErr
+    }
 
     return err
 }
