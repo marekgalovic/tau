@@ -21,10 +21,10 @@ const (
 )
 
 type Cluster interface {
-    NotifyWhenMaster() <-chan bool
     NodesCount() (int, error)
     ListNodes() ([]Node, error)
     GetNode(string) (Node, error)
+    NotifyWhenMaster() <-chan interface{}
     NodeChanges() <-chan interface{}
 }
 
@@ -39,9 +39,9 @@ type cluster struct {
     zk *zk.Conn
     seqId int64
     nodes map[string]Node
-    nodeChangesNotifications utils.Broadcaster
 
-    isMasterNotif chan bool
+    nodeChangesNotifications utils.Broadcaster
+    isMasterNotifications utils.Broadcaster
     connCache map[string]*grpc.ClientConn
 }
 
@@ -69,7 +69,7 @@ func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, 
         zk: zkConn,
         nodes: make(map[string]Node),
         nodeChangesNotifications: utils.NewThreadSafeBroadcast(),
-        isMasterNotif: make(chan bool),
+        isMasterNotifications: utils.NewThreadSafeBroadcast(),
         connCache: make(map[string]*grpc.ClientConn),
     }
 
@@ -205,7 +205,8 @@ func (c *cluster) watchMaster() {
 
         if c.seqId == leader.Meta().GetSeqId() {
             log.Info("Node is master")
-            c.isMasterNotif <- true
+            c.isMasterNotifications.Send(true)
+            c.isMasterNotifications.Close()
             return
         }
 
@@ -244,8 +245,8 @@ func (c *cluster) closeClientConnections() {
     }
 }
 
-func (c *cluster) NotifyWhenMaster() <-chan bool {
-    return c.isMasterNotif
+func (c *cluster) NotifyWhenMaster() <-chan interface{} {
+    return c.isMasterNotifications.Listen()
 }
 
 func (c *cluster) NodesCount() (int, error) {

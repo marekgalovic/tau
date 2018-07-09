@@ -37,6 +37,12 @@ func NewRendezvousHash() RendezvousHash {
     }
 }
 
+func RendezvousHashScore(node, key string, weight float32) float32 {
+    sum := crc32.Checksum(append([]byte(node), []byte(key)...), crc32Table)
+
+    return weight * float32(-math.Log(float64(sum / 0xFFFFFFFF)))
+}
+
 func (rh *rendezvousHash) Add(node string, weight float32) {
     rh.nodes[node] = weight
 }
@@ -53,7 +59,7 @@ func (rh *rendezvousHash) Get(key string) (*RendezvousNodeScore, error) {
     var maxScore float32 = -math.MaxFloat32
     var topNode string
     for node, nodeWeight := range rh.nodes {
-        if score := rh.score(rh.hash(node, key), nodeWeight); score > maxScore {
+        if score := RendezvousHashScore(node, key, nodeWeight); score > maxScore {
             maxScore = score
             topNode = node
         }
@@ -78,7 +84,7 @@ func (rh *rendezvousHash) GetN(n int, key string) ([]*RendezvousNodeScore, error
     for node, nodeWeight := range rh.nodes {
         scores[i] = &RendezvousNodeScore {
             Node: node,
-            Score: rh.score(rh.hash(node, key), nodeWeight),
+            Score: RendezvousHashScore(node, key, nodeWeight),
         }
         i++
     }
@@ -87,12 +93,4 @@ func (rh *rendezvousHash) GetN(n int, key string) ([]*RendezvousNodeScore, error
         return scores[i].Score > scores[j].Score
     })
     return scores[:n], nil
-}
-
-func (rh *rendezvousHash) hash(node, key string) uint32 {
-    return crc32.Checksum(append([]byte(node), []byte(key)...), crc32Table)
-}
-
-func (rh *rendezvousHash) score(hashValue uint32, nodeWeight float32) float32 {
-    return nodeWeight * float32(-math.Log(float64(hashValue) / 0xFFFFFFFF))
 }
