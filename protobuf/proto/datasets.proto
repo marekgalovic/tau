@@ -1,7 +1,26 @@
 syntax = "proto3";
 package tau;
 
-// import "core.proto";
+import "core.proto";
+
+service DatasetsService {
+    rpc List(EmptyRequest) returns (stream Dataset);
+    rpc Get(GetDatasetRequest) returns (Dataset);
+    rpc Create(CreateDatasetRequest) returns (EmptyResponse);
+    rpc Delete(DeleteDatasetRequest) returns (EmptyResponse);
+}
+
+message GetDatasetRequest {
+    string name = 1;
+}
+
+message CreateDatasetRequest {
+    Dataset dataset = 1;
+}
+
+message DeleteDatasetRequest {
+    string name = 1;
+}
 
 message BtreeIndexOptions {
     int32 num_trees         = 1;

@@ -10,6 +10,16 @@ import (
     "github.com/satori/go.uuid";
 )
 
+
+func VolatileNodeUuid() (string, error) {
+    uuid := uuid.NewV1()
+    uuidBytes, err := uuid.MarshalText()
+    if err != nil {
+        return "", err
+    }
+    return string(uuidBytes), nil    
+}
+
 func NodeUuid() (string, error) {
     usr, err := user.Current()
     if err != nil {

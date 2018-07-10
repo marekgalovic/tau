@@ -1,8 +1,6 @@
 package tau
 
 import (
-    "fmt";
-    "sort";
     "errors";
     "context";
     "path/filepath";
@@ -27,11 +25,8 @@ const (
 )
 
 type DatasetsManager interface {
-    ListDatasets() ([]Dataset, error)
     GetDataset(string) (Dataset, error)
-    CreateDataset(*pb.Dataset) error
-    DeleteDataset(string) error
-    DatasetExists(string) (bool, error)
+    Run() error
 }
 
 type datasetsManager struct {
@@ -43,6 +38,8 @@ type datasetsManager struct {
 
     datasets map[string]Dataset
     datasetChangesNotifications utils.Broadcaster
+
+    localDatasets map[string]struct{}
 }
 
 type DatasetsChangedNotification struct {
@@ -57,15 +54,15 @@ func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cl
         zk: zkConn,
         cluster: cluster,
         storage: storage,
+
         datasets: make(map[string]Dataset),
         datasetChangesNotifications: utils.NewThreadSafeBroadcast(),
+
+        localDatasets: make(map[string]struct{}),
     }
     if err := dm.bootstrapZk(); err != nil {
         return nil, err
     }
-
-    go dm.watchDatasets()
-    go dm.run()
 
     return dm, nil
 }
@@ -84,6 +81,13 @@ func (dm *datasetsManager) bootstrapZk() error {
             return err
         }  
     }
+    return nil
+}
+
+func (dm *datasetsManager) Run() error {
+    go dm.watchDatasets()
+    go dm.run()
+
     return nil
 }
 
@@ -145,21 +149,22 @@ func (dm *datasetsManager) run() {
 
             switch notification.Event {
             case EventDatasetCreated:
-                go dm.datasetCreated(notification.Dataset)
                 log.Infof("DM dataset created: %s", notification.Dataset.Meta().GetName())
+                go dm.datasetCreated(notification.Dataset)
             case EventDatasetDeleted:
                 log.Infof("DM dataset deleted: %s", notification.Dataset.Meta().GetName())
+                go dm.datasetDeleted(notification.Dataset)
             }
         case n := <- nodeNotifications:
             notification := n.(*NodesChangedNotification)
 
             switch notification.Event {
             case EventNodeCreated:
-                go dm.nodeCreated(notification.Node)
                 log.Infof("DM node created: %s", notification.Node.Meta().GetUuid())
+                go dm.nodeCreated(notification.Node)
             case EventNodeDeleted:
-                go dm.nodeDeleted(notification.Node)
                 log.Infof("DM node deleted: %s", notification.Node.Meta().GetUuid())
+                go dm.nodeDeleted(notification.Node)
             }
         case <- dm.ctx.Done():
             return
@@ -175,30 +180,42 @@ func (dm *datasetsManager) datasetCreated(dataset Dataset) {
 
     if node.Meta().GetUuid() == dm.cluster.Uuid() {
         log.Infof("Own: %s", dataset.Meta().GetName())
+        dm.localDatasets[dataset.Meta().GetName()] = struct{}{}
+    }
+}
+
+func (dm *datasetsManager) datasetDeleted(dataset Dataset) {
+    if _, exists := dm.localDatasets[dataset.Meta().GetName()]; exists {
+        log.Infof("Delete local: %s", dataset.Meta().GetName())
     }
 }
 
 func (dm *datasetsManager) nodeCreated(node Node) {
-    log.Info(node)
+    for datasetName, _ := range dm.localDatasets {
+        node, err := dm.cluster.GetHrwNode(datasetName)
+        if err != nil {
+            panic(err)
+        }
+
+        if node.Meta().GetUuid() != dm.cluster.Uuid() {
+            log.Infof("Release ownership: %s", datasetName)
+            delete(dm.localDatasets, datasetName)
+        }
+    }
 }
 
 func (dm *datasetsManager) nodeDeleted(node Node) {
-    log.Info(node)
-}
+    for _, dataset := range dm.datasets {
+        topNode, err := dm.cluster.GetHrwNode(dataset.Meta().GetName())
+        if err != nil {
+            panic(err)
+        }
 
-func (dm *datasetsManager) ListDatasets() ([]Dataset, error) {
-    datasetNames, _, err := dm.zk.Children(dm.zkDatasetsPath())
-    if err != nil {
-        return nil, err
-    }
-
-    datasets := make([]Dataset, len(datasetNames))
-    for i, datasetName := range datasetNames {
-        if datasets[i], err = dm.GetDataset(datasetName); err != nil {
-            return nil, err
+        if topNode.Meta().GetUuid() == dm.cluster.Uuid() {
+            log.Infof("Own: %s", dataset.Meta().GetName())
+            dm.localDatasets[dataset.Meta().GetName()] = struct{}{}
         }
     }
-    return datasets, nil
 }
 
 func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
@@ -214,85 +231,9 @@ func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
     }
     datasetMeta.ZkPath = zkPath
 
-    return &dataset {
-        meta: datasetMeta,
-    }, nil
-}
-
-func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
-    partitions, err := dm.getDatasetPartitions(dataset)
-    if err != nil {
-        return err
-    }
-
-    datasetMetadata, err := proto.Marshal(dataset)
-    if err != nil {
-        return err
-    }
-
-    requests := []interface{}{
-        &zk.CreateRequest{Path: filepath.Join(dm.zkDatasetsPath(), dataset.GetName()), Data: datasetMetadata, Flags: int32(0), Acl: zk.WorldACL(zk.PermAll)},
-        &zk.CreateRequest{Path: filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions"), Data: nil, Flags: int32(0), Acl: zk.WorldACL(zk.PermAll)},
-    }
-
-    for i, partition := range partitions {
-        partitionData, err := proto.Marshal(partition)
-        if err != nil {
-            return err
-        }
-
-        requests = append(requests, &zk.CreateRequest{
-            Path: filepath.Join(dm.zkDatasetsPath(), dataset.GetName(), "partitions", fmt.Sprintf("%d", i)),
-            Data: partitionData,
-            Flags: int32(0),
-            Acl: zk.WorldACL(zk.PermAll),
-        })
-    }
-
-    _, err = dm.zk.Multi(requests...)
-    if err == zk.ErrNodeExists {
-        return DatasetAlreadyExistsErr
-    }
-
-    return err
-}
-
-func (dm *datasetsManager) DeleteDataset(name string) error {
-    return utils.ZkRecursiveDelete(dm.zk, filepath.Join(dm.zkDatasetsPath(), name))
-}
-
-func (dm *datasetsManager) DatasetExists(name string) (bool, error) {
-    exists, _, err := dm.zk.Exists(filepath.Join(dm.zkDatasetsPath(), name))
-
-    return exists, err
+    return newDatasetFromProto(datasetMeta, dm.storage), nil
 }
 
 func (dm *datasetsManager) zkDatasetsPath() string {
     return filepath.Join(dm.config.Zookeeper.BasePath, "datasets")
-}
-
-func (dm *datasetsManager) getDatasetPartitions(dataset *pb.Dataset) ([]*pb.DatasetPartition, error) {
-    files, err := dm.storage.ListFiles(dataset.GetPath())
-    if err != nil {
-        return nil, err
-    }
-    sort.Strings(files)
-
-    numPartitions := int(dataset.GetNumPartitions())
-    if len(files) < numPartitions {
-        log.Warn("Number of files is less than the number of partitions")
-        numPartitions = len(files)
-    }
-
-    partitions := make([]*pb.DatasetPartition, numPartitions)
-    numFilesPerPartition := numPartitions / len(files)
-    for i := 0; i < numPartitions; i++ {
-        lbIdx := i * numFilesPerPartition
-        ubIdx := i * numFilesPerPartition + numFilesPerPartition
-        if i == numPartitions - 1 {
-            ubIdx += len(files) - numPartitions * numFilesPerPartition
-        }
-        partitions[i] = &pb.DatasetPartition{Id: int32(i), Files: files[lbIdx:ubIdx]}
-    }
-    return partitions, nil
 }

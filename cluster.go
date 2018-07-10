@@ -69,7 +69,7 @@ func newNode(meta *pb.Node, cluster *cluster) Node {
 }
 
 func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, error) {
-    uuid, err := utils.NodeUuid()
+    uuid, err := utils.VolatileNodeUuid()
     if err != nil {
         return nil, err
     }
@@ -318,7 +318,6 @@ func (c *cluster) GetHrwNode(key string) (Node, error) {
             topNode = node
         }
     }
-
     return topNode, nil
 }
 

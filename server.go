@@ -5,6 +5,7 @@ import (
 
     pb "github.com/marekgalovic/tau/protobuf";
 
+    "github.com/samuel/go-zookeeper/zk";
     "google.golang.org/grpc"
 )
 
@@ -18,12 +19,14 @@ type server struct {
     grpcServer *grpc.Server
     
     config *Config
+    zk *zk.Conn
     datasetsManager DatasetsManager
 }
 
-func NewServer(config *Config, datasetsManager DatasetsManager) Server {
+func NewServer(config *Config, zkConn *zk.Conn, datasetsManager DatasetsManager) Server {
     s := &server{
         config: config,
+        zk: zkConn,
         datasetsManager: datasetsManager,
     }
 
@@ -55,5 +58,6 @@ func (s *server) initializeGrpcServer() {
 }
 
 func (s *server) registerServices() {
+    pb.RegisterDatasetsServiceServer(s.grpcServer, newDatasetsService(s.config, s.zk))
     pb.RegisterSearchServiceServer(s.grpcServer, newSearchService(s.datasetsManager))
 }

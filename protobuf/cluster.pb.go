@@ -14,6 +14,9 @@ It has these top-level messages:
 	Node
 	EmptyRequest
 	EmptyResponse
+	GetDatasetRequest
+	CreateDatasetRequest
+	DeleteDatasetRequest
 	BtreeIndexOptions
 	VoronoiIndexOptions
 	Index
