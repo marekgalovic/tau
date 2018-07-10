@@ -16,6 +16,7 @@ It has these top-level messages:
 	EmptyResponse
 	GetDatasetRequest
 	CreateDatasetRequest
+	CreateDatasetWithPartitionsRequest
 	DeleteDatasetRequest
 	BtreeIndexOptions
 	VoronoiIndexOptions

@@ -7,6 +7,7 @@ service DatasetsService {
     rpc List(EmptyRequest) returns (stream Dataset);
     rpc Get(GetDatasetRequest) returns (Dataset);
     rpc Create(CreateDatasetRequest) returns (EmptyResponse);
+    rpc CreateWithPartitions(CreateDatasetWithPartitionsRequest) returns (EmptyResponse);
     rpc Delete(DeleteDatasetRequest) returns (EmptyResponse);
 }
 
@@ -16,6 +17,11 @@ message GetDatasetRequest {
 
 message CreateDatasetRequest {
     Dataset dataset = 1;
+}
+
+message CreateDatasetWithPartitionsRequest {
+    Dataset dataset = 1;
+    repeated DatasetPartition partitions = 2;
 }
 
 message DeleteDatasetRequest {

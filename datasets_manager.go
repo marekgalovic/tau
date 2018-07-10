@@ -1,7 +1,7 @@
 package tau
 
 import (
-    "errors";
+    // "errors";
     "context";
     "path/filepath";
 
@@ -12,11 +12,6 @@ import (
     "github.com/samuel/go-zookeeper/zk";
     "github.com/golang/protobuf/proto";
     log "github.com/Sirupsen/logrus";
-)
-
-var (
-    DatasetAlreadyExistsErr = errors.New("Dataset already exists")
-    NoNodesAvailableErr = errors.New("No nodes available")
 )
 
 const (
@@ -85,6 +80,18 @@ func (dm *datasetsManager) bootstrapZk() error {
 }
 
 func (dm *datasetsManager) Run() error {
+    nodes, err := dm.cluster.ListNodes()
+    if err != nil {
+        return err
+    }
+    datasetsWithPartitions, err := dm.ListDatasetsWithPartitions()
+    if err != nil {
+        return err
+    }
+
+    log.Info(nodes)
+    log.Info(datasetsWithPartitions)
+
     go dm.watchDatasets()
     go dm.run()
 
@@ -217,6 +224,23 @@ func (dm *datasetsManager) nodeDeleted(node Node) {
         }
     }
 }
+ 
+func (dm *datasetsManager) ListDatasetsWithPartitions() (map[string][]string, error) {
+    datasets, _, err := dm.zk.Children(dm.zkDatasetsPath())
+    if err != nil {
+        return nil, err
+    }
+
+    result := make(map[string][]string)
+    for _, dataset := range datasets {
+        partitions, err := dm.listDatasetPartitions(dataset)
+        if err != nil {
+            return nil, err
+        }
+        result[dataset] = partitions
+    }
+    return result, nil
+}
 
 func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
     zkPath := filepath.Join(dm.zkDatasetsPath(), name)
@@ -232,6 +256,12 @@ func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
     datasetMeta.ZkPath = zkPath
 
     return newDatasetFromProto(datasetMeta, dm.storage), nil
+}
+
+func (dm *datasetsManager) listDatasetPartitions(name string) ([]string, error) {
+    partitions, _, err := dm.zk.Children(filepath.Join(dm.zkDatasetsPath(), name, "partitions"))
+
+    return partitions, err
 }
 
 func (dm *datasetsManager) zkDatasetsPath() string {

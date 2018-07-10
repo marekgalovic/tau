@@ -29,7 +29,8 @@ func main() {
         log.Fatal(err)
     }
 
-    datasetsManager, err := tau.NewDatasetsManager(ctx, config, zkConn, cluster, storage.NewLocal())
+    lStorage := storage.NewLocal()
+    datasetsManager, err := tau.NewDatasetsManager(ctx, config, zkConn, cluster, lStorage)
     if err != nil {
         log.Fatal(err)
     }
@@ -37,7 +38,7 @@ func main() {
         log.Fatal(err)
     }
 
-    server := tau.NewServer(config, zkConn, datasetsManager)
+    server := tau.NewServer(config, zkConn, datasetsManager, lStorage)
     if err := server.Start(); err != nil {
         log.Fatal(err)
     }

@@ -3,6 +3,7 @@ package tau
 import (
     "net";
 
+    "github.com/marekgalovic/tau/storage";
     pb "github.com/marekgalovic/tau/protobuf";
 
     "github.com/samuel/go-zookeeper/zk";
@@ -21,13 +22,15 @@ type server struct {
     config *Config
     zk *zk.Conn
     datasetsManager DatasetsManager
+    storage storage.Storage
 }
 
-func NewServer(config *Config, zkConn *zk.Conn, datasetsManager DatasetsManager) Server {
+func NewServer(config *Config, zkConn *zk.Conn, datasetsManager DatasetsManager, storage storage.Storage) Server {
     s := &server{
         config: config,
         zk: zkConn,
         datasetsManager: datasetsManager,
+        storage: storage,
     }
 
     s.initializeGrpcServer()
@@ -58,6 +61,6 @@ func (s *server) initializeGrpcServer() {
 }
 
 func (s *server) registerServices() {
-    pb.RegisterDatasetsServiceServer(s.grpcServer, newDatasetsService(s.config, s.zk))
+    pb.RegisterDatasetsServiceServer(s.grpcServer, newDatasetsService(s.config, s.zk, s.storage))
     pb.RegisterSearchServiceServer(s.grpcServer, newSearchService(s.datasetsManager))
 }
