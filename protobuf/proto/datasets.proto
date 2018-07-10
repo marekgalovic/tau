@@ -33,7 +33,6 @@ message VoronoiIndexOptions {
 }
 
 message Index {
-    string name     = 1;
     int32 size      = 2;
     string metric   = 3;
     oneof options {

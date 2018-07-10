@@ -59,7 +59,6 @@ func (index *voronoiIndex) Add(id int64, value math.Vector) error {
 
 func (index *voronoiIndex) ToProto() *pb.Index {
     proto := index.baseIndex.ToProto()
-    proto.Name = "voronoi"
     proto.Options = &pb.Index_Voronoi {
         Voronoi: &pb.VoronoiIndexOptions {
             SplitFactor: int32(index.splitFactor),

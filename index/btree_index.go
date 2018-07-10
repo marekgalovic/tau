@@ -53,7 +53,6 @@ func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
 
 func (index *btreeIndex) ToProto() *pb.Index {
     proto := index.baseIndex.ToProto()
-    proto.Name = "btree"
     proto.Options = &pb.Index_Btree {
         Btree: &pb.BtreeIndexOptions {
             NumTrees: int32(index.numTrees),
