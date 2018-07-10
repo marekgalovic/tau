@@ -37,7 +37,7 @@ type datasetsManager struct {
     storage storage.Storage
 
     datasets map[string]Dataset
-    datasetChangesNotifications utils.Broadcaster
+    datasetChangesNotifications utils.Broadcast
 
     localDatasets map[string]struct{}
 }
@@ -140,21 +140,10 @@ func (dm *datasetsManager) updateDatasets(datasets []string) error {
 
 func (dm *datasetsManager) run() {
     nodeNotifications := dm.cluster.NodeChanges()
-    datasetNotifications := dm.datasetChangesNotifications.Listen()
+    datasetNotifications := dm.datasetChangesNotifications.Listen(10)
 
     for {
         select {
-        case n := <- datasetNotifications:
-            notification := n.(*DatasetsChangedNotification)
-
-            switch notification.Event {
-            case EventDatasetCreated:
-                log.Infof("DM dataset created: %s", notification.Dataset.Meta().GetName())
-                go dm.datasetCreated(notification.Dataset)
-            case EventDatasetDeleted:
-                log.Infof("DM dataset deleted: %s", notification.Dataset.Meta().GetName())
-                go dm.datasetDeleted(notification.Dataset)
-            }
         case n := <- nodeNotifications:
             notification := n.(*NodesChangedNotification)
 
@@ -165,6 +154,17 @@ func (dm *datasetsManager) run() {
             case EventNodeDeleted:
                 log.Infof("DM node deleted: %s", notification.Node.Meta().GetUuid())
                 go dm.nodeDeleted(notification.Node)
+            }
+        case n := <- datasetNotifications:
+            notification := n.(*DatasetsChangedNotification)
+
+            switch notification.Event {
+            case EventDatasetCreated:
+                log.Infof("DM dataset created: %s", notification.Dataset.Meta().GetName())
+                go dm.datasetCreated(notification.Dataset)
+            case EventDatasetDeleted:
+                log.Infof("DM dataset deleted: %s", notification.Dataset.Meta().GetName())
+                go dm.datasetDeleted(notification.Dataset)
             }
         case <- dm.ctx.Done():
             return

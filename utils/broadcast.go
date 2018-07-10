@@ -4,10 +4,10 @@ import (
     "sync";
 )
 
-type Broadcaster interface {
+type Broadcast interface {
     Close()
     Send(interface{})
-    Listen() <-chan interface{}
+    Listen(int) <-chan interface{}
 }
 
 type baseBroadcaster struct {
@@ -19,11 +19,11 @@ type threadSafeBraodcaster struct {
     mutex *sync.Mutex
 }
 
-func NewBroadcast() Broadcaster {
+func NewBroadcast() Broadcast {
     return &baseBroadcaster{}
 }
 
-func NewThreadSafeBroadcast() Broadcaster {
+func NewThreadSafeBroadcast() Broadcast {
     return &threadSafeBraodcaster {
         baseBroadcaster: &baseBroadcaster{},
         mutex: &sync.Mutex{},
@@ -47,8 +47,8 @@ func (b *baseBroadcaster) Send(value interface{}) {
     }
 }
 
-func (b *baseBroadcaster) Listen() <-chan interface{} {
-    listener := make(chan interface{})
+func (b *baseBroadcaster) Listen(bufSize int) <-chan interface{} {
+    listener := make(chan interface{}, bufSize)
     b.listeners = append(b.listeners, listener)
 
     return listener
@@ -69,9 +69,9 @@ func (b *threadSafeBraodcaster) Send(value interface{}) {
     b.baseBroadcaster.Send(value)
 }
 
-func (b *threadSafeBraodcaster) Listen() <-chan interface{} {
+func (b *threadSafeBraodcaster) Listen(bufSize int) <-chan interface{} {
     defer b.mutex.Unlock()
     b.mutex.Lock()
 
-    return b.baseBroadcaster.Listen()
+    return b.baseBroadcaster.Listen(bufSize)
 }

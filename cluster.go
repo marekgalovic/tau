@@ -45,9 +45,9 @@ type cluster struct {
     seqId int64
 
     nodes map[string]Node
-    nodeChangesNotifications utils.Broadcaster
+    nodeChangesNotifications utils.Broadcast
 
-    isMasterNotifications utils.Broadcaster
+    isMasterNotifications utils.Broadcast
     connCache map[string]*grpc.ClientConn
 }
 
@@ -257,7 +257,7 @@ func (c *cluster) Uuid() string {
 }
 
 func (c *cluster) NotifyWhenMaster() <-chan interface{} {
-    return c.isMasterNotifications.Listen()
+    return c.isMasterNotifications.Listen(0)
 }
 
 func (c *cluster) NodesCount() (int, error) {
@@ -322,7 +322,7 @@ func (c *cluster) GetHrwNode(key string) (Node, error) {
 }
 
 func (c *cluster) NodeChanges() <-chan interface{} {
-    return c.nodeChangesNotifications.Listen()
+    return c.nodeChangesNotifications.Listen(10)
 }
 
 func (c *cluster) dialNode(address string) (*grpc.ClientConn, error) {
