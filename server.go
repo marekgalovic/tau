@@ -55,6 +55,5 @@ func (s *server) initializeGrpcServer() {
 }
 
 func (s *server) registerServices() {
-    pb.RegisterDatasetsManagerServer(s.grpcServer, s.datasetsManager)
     pb.RegisterSearchServiceServer(s.grpcServer, newSearchService(s.datasetsManager))
 }

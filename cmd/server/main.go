@@ -42,7 +42,7 @@ func main() {
     }
 
     d := &pb.Dataset {
-        Name: "b9",
+        Name: "b10",
         Path: "./examples/data/random_*",
         NumPartitions: 10,
         NumReplicas: 1,
@@ -57,7 +57,7 @@ func main() {
 
     <- time.After(1 * time.Second)
 
-    log.Info(datasetsManager.DeleteDataset("b9"))
+    log.Info(datasetsManager.DeleteDataset("b10"))
 
     <- utils.InterruptSignal()
     server.Stop()

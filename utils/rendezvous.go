@@ -1,10 +1,11 @@
-// Weighted rendezvous hasing implementation
+// Rendezvous (highest random weight) hashing
 package utils
 
 import (
     "math";
     "hash/crc32";
     "sort";
+    "sync";
     "errors";
 )
 
@@ -29,11 +30,13 @@ type RendezvousNodeScore struct {
 
 type rendezvousHash struct {
     nodes map[string]float32
+    nodesMutex *sync.Mutex
 }
 
 func NewRendezvousHash() RendezvousHash {
     return &rendezvousHash{
         nodes: make(map[string]float32),
+        nodesMutex: &sync.Mutex{},
     }
 }
 
@@ -44,10 +47,16 @@ func RendezvousHashScore(node, key string, weight float32) float32 {
 }
 
 func (rh *rendezvousHash) Add(node string, weight float32) {
+    defer rh.nodesMutex.Unlock()
+    rh.nodesMutex.Lock()
+
     rh.nodes[node] = weight
 }
 
 func (rh *rendezvousHash) Delete(node string) {
+    defer rh.nodesMutex.Unlock()
+    rh.nodesMutex.Lock()
+    
     delete(rh.nodes, node)
 }
 

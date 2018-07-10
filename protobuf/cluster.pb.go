@@ -19,8 +19,6 @@ It has these top-level messages:
 	Index
 	Dataset
 	DatasetPartition
-	BuildPartitionRequest
-	LoadPartitionRequest
 	SearchRequest
 	SearchResultItem
 */

@@ -38,9 +38,10 @@ type cluster struct {
     config *Config
     zk *zk.Conn
     seqId int64
-    nodes map[string]Node
 
+    nodes map[string]Node
     nodeChangesNotifications utils.Broadcaster
+
     isMasterNotifications utils.Broadcaster
     connCache map[string]*grpc.ClientConn
 }
@@ -139,7 +140,6 @@ func (c *cluster) watchNodes() {
 
         select {
         case <- event:
-            continue
         case <- c.ctx.Done():
             return
         }

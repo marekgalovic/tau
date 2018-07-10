@@ -21,13 +21,17 @@ var (
     NoNodesAvailableErr = errors.New("No nodes available")
 )
 
+const (
+    EventDatasetCreated int32 = 1
+    EventDatasetDeleted int32 = 2
+)
+
 type DatasetsManager interface {
-    BuildPartition(context.Context, *pb.BuildPartitionRequest) (*pb.EmptyResponse, error)
     ListDatasets() ([]Dataset, error)
-    DatasetExists(string) (bool, error)
     GetDataset(string) (Dataset, error)
     CreateDataset(*pb.Dataset) error
     DeleteDataset(string) error
+    DatasetExists(string) (bool, error)
 }
 
 type datasetsManager struct {
@@ -37,10 +41,13 @@ type datasetsManager struct {
     cluster Cluster
     storage storage.Storage
 
-    // Master
     datasets map[string]Dataset
-    partitionManagers map[string]PartitionsManager
-    localPartitions map[string]Dataset
+    datasetChangesNotifications utils.Broadcaster
+}
+
+type DatasetsChangedNotification struct {
+    Event int32
+    Dataset Dataset
 }
 
 func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cluster Cluster, storage storage.Storage) (DatasetsManager, error) {
@@ -50,13 +57,15 @@ func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cl
         zk: zkConn,
         cluster: cluster,
         storage: storage,
-        localPartitions: make(map[string]Dataset),
+        datasets: make(map[string]Dataset),
+        datasetChangesNotifications: utils.NewThreadSafeBroadcast(),
     }
     if err := dm.bootstrapZk(); err != nil {
         return nil, err
     }
 
-    go dm.master()
+    go dm.watchDatasets()
+    go dm.run()
 
     return dm, nil
 }
@@ -78,19 +87,6 @@ func (dm *datasetsManager) bootstrapZk() error {
     return nil
 }
 
-func (dm *datasetsManager) master() {
-    select {
-    case <- dm.cluster.NotifyWhenMaster():
-        log.Info("Datasets manager master")
-        dm.datasets = make(map[string]Dataset)
-        dm.partitionManagers = make(map[string]PartitionsManager)
-
-        go dm.watchDatasets()
-    case <- dm.ctx.Done():
-        return
-    }    
-}
-
 func (dm *datasetsManager) watchDatasets() {
     for {
         datasets, _, event, err := dm.zk.ChildrenW(dm.zkDatasetsPath())
@@ -103,7 +99,6 @@ func (dm *datasetsManager) watchDatasets() {
 
         select {
         case <- event:
-            continue
         case <- dm.ctx.Done():
             return
         }
@@ -112,49 +107,59 @@ func (dm *datasetsManager) watchDatasets() {
 
 func (dm *datasetsManager) updateDatasets(datasets []string) error {
     updatedDatasets := utils.NewSet()
-    for _, dataset := range datasets {
-        updatedDatasets.Add(dataset)
+    for _, datasetName := range datasets {
+        updatedDatasets.Add(datasetName)
 
-        if _, exists := dm.datasets[dataset]; !exists {
+        if _, exists := dm.datasets[datasetName]; !exists {
             var err error
-            if dm.datasets[dataset], err = dm.GetDataset(dataset); err != nil {
+            if dm.datasets[datasetName], err = dm.GetDataset(datasetName); err != nil {
                 return err
             }
-            dm.partitionManagers[dataset] = newPartitionsManager(dm.ctx, dm.datasets[dataset], dm.zk, dm.cluster)
+            dm.datasetChangesNotifications.Send(&DatasetsChangedNotification{
+                Event: EventDatasetCreated,
+                Dataset: dm.datasets[datasetName],
+            })
         }
     }
 
-    for dataset, _ := range dm.datasets {
-        if !updatedDatasets.Contains(dataset) {
-            dm.partitionManagers[dataset].Stop()
-
-            delete(dm.datasets, dataset)
-            delete(dm.partitionManagers, dataset)
+    for datasetName, dataset := range dm.datasets {
+        if !updatedDatasets.Contains(datasetName) {
+            delete(dm.datasets, datasetName)
+            dm.datasetChangesNotifications.Send(&DatasetsChangedNotification{
+                Event: EventDatasetDeleted,
+                Dataset: dataset,
+            })
         }
     }
     return nil
 }
 
-func (dm *datasetsManager) LoadPartition(ctx context.Context, req *pb.LoadPartitionRequest) (*pb.EmptyResponse, error) {
-    return nil, nil
-}
+func (dm *datasetsManager) run() {
+    nodeNotifications := dm.cluster.NodeChanges()
+    datasetNotifications := dm.datasetChangesNotifications.Listen()
 
-func (dm *datasetsManager) BuildPartition(ctx context.Context, req *pb.BuildPartitionRequest) (*pb.EmptyResponse, error) {
-    if _, exists := dm.localPartitions[req.Dataset.Name]; exists {
-        return &pb.EmptyResponse{}, nil
-    }
+    for {
+        select {
+        case n := <- datasetNotifications:
+            notification := n.(*DatasetsChangedNotification)
 
-    go func() {
-        dataset := newDatasetFromProto(req.Dataset, dm.storage)
-        if err := dataset.Load(req.Partition.Files); err != nil {
-            fmt.Println(err)
+            switch notification.Event {
+            case EventDatasetCreated:
+                log.Infof("DM dataset created: %s", notification.Dataset.Meta().GetName())
+            }
+        case n := <- nodeNotifications:
+            notification := n.(*NodesChangedNotification)
+
+            switch notification.Event {
+            case EventNodeCreated:
+                log.Infof("DM node created: %s", notification.Node.Meta().GetUuid())
+            case EventNodeDeleted:
+                log.Infof("DM node deleted: %s", notification.Node.Meta().GetUuid())
+            }
+        case <- dm.ctx.Done():
+            return
         }
-
-        dm.localPartitions[dataset.Meta().Name] = dataset
-        log.Infof("Built local partition: %s", dataset.Meta().Name)
-    }()
-
-    return &pb.EmptyResponse{}, nil
+    }
 }
 
 func (dm *datasetsManager) ListDatasets() ([]Dataset, error) {
@@ -188,12 +193,6 @@ func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
     return &dataset {
         meta: datasetMeta,
     }, nil
-}
-
-func (dm *datasetsManager) DatasetExists(name string) (bool, error) {
-    exists, _, err := dm.zk.Exists(filepath.Join(dm.zkDatasetsPath(), name))
-
-    return exists, err
 }
 
 func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
@@ -236,6 +235,12 @@ func (dm *datasetsManager) CreateDataset(dataset *pb.Dataset) error {
 
 func (dm *datasetsManager) DeleteDataset(name string) error {
     return utils.ZkRecursiveDelete(dm.zk, filepath.Join(dm.zkDatasetsPath(), name))
+}
+
+func (dm *datasetsManager) DatasetExists(name string) (bool, error) {
+    exists, _, err := dm.zk.Exists(filepath.Join(dm.zkDatasetsPath(), name))
+
+    return exists, err
 }
 
 func (dm *datasetsManager) zkDatasetsPath() string {
