@@ -145,21 +145,45 @@ func (dm *datasetsManager) run() {
 
             switch notification.Event {
             case EventDatasetCreated:
+                go dm.datasetCreated(notification.Dataset)
                 log.Infof("DM dataset created: %s", notification.Dataset.Meta().GetName())
+            case EventDatasetDeleted:
+                log.Infof("DM dataset deleted: %s", notification.Dataset.Meta().GetName())
             }
         case n := <- nodeNotifications:
             notification := n.(*NodesChangedNotification)
 
             switch notification.Event {
             case EventNodeCreated:
+                go dm.nodeCreated(notification.Node)
                 log.Infof("DM node created: %s", notification.Node.Meta().GetUuid())
             case EventNodeDeleted:
+                go dm.nodeDeleted(notification.Node)
                 log.Infof("DM node deleted: %s", notification.Node.Meta().GetUuid())
             }
         case <- dm.ctx.Done():
             return
         }
     }
+}
+
+func (dm *datasetsManager) datasetCreated(dataset Dataset) {
+    node, err := dm.cluster.GetHrwNode(dataset.Meta().GetName())
+    if err != nil {
+        panic(err)
+    }
+
+    if node.Meta().GetUuid() == dm.cluster.Uuid() {
+        log.Infof("Own: %s", dataset.Meta().GetName())
+    }
+}
+
+func (dm *datasetsManager) nodeCreated(node Node) {
+    log.Info(node)
+}
+
+func (dm *datasetsManager) nodeDeleted(node Node) {
+    log.Info(node)
 }
 
 func (dm *datasetsManager) ListDatasets() ([]Dataset, error) {

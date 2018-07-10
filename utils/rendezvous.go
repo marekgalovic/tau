@@ -43,7 +43,7 @@ func NewRendezvousHash() RendezvousHash {
 func RendezvousHashScore(node, key string, weight float32) float32 {
     sum := crc32.Checksum(append([]byte(node), []byte(key)...), crc32Table)
 
-    return weight * float32(-math.Log(float64(sum / 0xFFFFFFFF)))
+    return weight * float32(-math.Log(float64(sum) / 0xFFFFFFFF))
 }
 
 func (rh *rendezvousHash) Add(node string, weight float32) {

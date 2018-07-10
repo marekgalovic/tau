@@ -4,6 +4,7 @@ import (
     "net";
     "math";
     "context";
+    "errors";
     "path/filepath";
 
     pb "github.com/marekgalovic/tau/protobuf";
@@ -21,10 +22,12 @@ const (
 )
 
 type Cluster interface {
+    Uuid() string
     NodesCount() (int, error)
     ListNodes() ([]Node, error)
     GetNode(string) (Node, error)
     NotifyWhenMaster() <-chan interface{}
+    GetHrwNode(string) (Node, error)
     NodeChanges() <-chan interface{}
 }
 
@@ -37,6 +40,8 @@ type cluster struct {
     ctx context.Context
     config *Config
     zk *zk.Conn
+
+    uuid string
     seqId int64
 
     nodes map[string]Node
@@ -64,10 +69,16 @@ func newNode(meta *pb.Node, cluster *cluster) Node {
 }
 
 func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, error) {
+    uuid, err := utils.NodeUuid()
+    if err != nil {
+        return nil, err
+    }
+
     c := &cluster{
         ctx: ctx,
         config: config,
         zk: zkConn,
+        uuid: uuid,
         nodes: make(map[string]Node),
         nodeChangesNotifications: utils.NewThreadSafeBroadcast(),
         isMasterNotifications: utils.NewThreadSafeBroadcast(),
@@ -106,16 +117,12 @@ func (c *cluster) bootstrapZk() error {
 }
 
 func (c *cluster) register() error {
-    uuid, err := utils.NodeUuid()
-    if err != nil {
-        return err
-    }
     ipAddress, err := utils.NodeIpAddress()
     if err != nil {
         return err
     }
 
-    nodeData, err := proto.Marshal(&pb.Node{Uuid: uuid, IpAddress: ipAddress, Port: c.config.Server.Port})
+    nodeData, err := proto.Marshal(&pb.Node{Uuid: c.uuid, IpAddress: ipAddress, Port: c.config.Server.Port})
     if err != nil {
         return err
     }
@@ -245,6 +252,10 @@ func (c *cluster) closeClientConnections() {
     }
 }
 
+func (c *cluster) Uuid() string {
+    return c.uuid
+}
+
 func (c *cluster) NotifyWhenMaster() <-chan interface{} {
     return c.isMasterNotifications.Listen()
 }
@@ -292,6 +303,23 @@ func (c *cluster) GetNode(nodeName string) (Node, error) {
     }
 
     return newNode(node, c), nil
+}
+
+func (c *cluster) GetHrwNode(key string) (Node, error) {
+    if len(c.nodes) == 0 {
+        return nil, errors.New("No nodes")
+    }
+
+    var maxScore float32 = -math.MaxFloat32
+    var topNode Node
+    for _, node := range c.nodes {
+        if score := utils.RendezvousHashScore(node.Meta().GetUuid(), key, 1); score > maxScore {
+            maxScore = score
+            topNode = node
+        }
+    }
+
+    return topNode, nil
 }
 
 func (c *cluster) NodeChanges() <-chan interface{} {
