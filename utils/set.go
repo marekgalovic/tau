@@ -53,7 +53,7 @@ func(s *baseSet) Contains(element interface{}) bool {
 func (s *baseSet) Difference(other Set) Set {
     result := make(baseSet)
 
-    for _, element := range *s {
+    for element, _ := range *s {
         if !other.Contains(element) {
             result.Add(element)
         }
@@ -66,10 +66,10 @@ func (s *baseSet) Union(other Set) Set {
     o := other.(*baseSet)
     result := make(baseSet)
 
-    for _, element := range *s {
+    for element, _ := range *s {
         result.Add(element)
     }
-    for _, element := range *o {
+    for element, _ := range *o {
         result.Add(element)
     }
 

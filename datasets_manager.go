@@ -307,7 +307,7 @@ func (dm *datasetsManager) buildDatasetPartitions(dataset Dataset, partitions ut
         log.Infof("Own dataset: %s, partitions: %s", dataset.Meta().GetName(), partitions)
     } else {
         dm.addLocalDataset(dataset.Meta().GetName(), existingPartitions.Union(partitions))
-        log.Infof("Own dataset: %s, partitions: %s", dataset.Meta().GetName(), partitions.Difference(existingPartitions))
+        log.Infof("Own dataset: %s, partitions: %s", dataset.Meta().GetName(), existingPartitions.Union(existingPartitions))
     }
 }
 
@@ -315,7 +315,7 @@ func (dm *datasetsManager) releaseDatasetPartitions(datasetName string, partitio
     existingPartitions := dm.localDatasets[datasetName]
     dm.addLocalDataset(datasetName, existingPartitions.Difference(partitions))
 
-    log.Infof("Release dataset: %s, partitions: %s", datasetName, partitions)
+    log.Infof("Release dataset: %s, released partitions: %s", datasetName, partitions)
 }
 
 func (dm *datasetsManager) shouldOwn(dataset Dataset, partitionId string) (bool, error) {
