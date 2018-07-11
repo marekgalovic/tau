@@ -63,7 +63,7 @@ type NodesChangedNotification struct {
 
 type hrwNodeScore struct {
     Uuid string
-    Score float32
+    Score float64
 }
 
 func newNode(meta *pb.Node, cluster *cluster) Node {
@@ -253,7 +253,7 @@ func (c *cluster) GetHrwNode(key string) (Node, error) {
         return nil, errors.New("No nodes")
     }
 
-    var maxScore float32 = -math.MaxFloat32
+    var maxScore float64 = -math.MaxFloat64
     var topNode Node
     for _, node := range c.nodes {
         if score := utils.RendezvousHashScore(node.Meta().GetUuid(), key, 1); score > maxScore {
