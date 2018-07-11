@@ -18,6 +18,7 @@ It has these top-level messages:
 	CreateDatasetRequest
 	CreateDatasetWithPartitionsRequest
 	DeleteDatasetRequest
+	ListPartitionsRequest
 	BtreeIndexOptions
 	VoronoiIndexOptions
 	Index

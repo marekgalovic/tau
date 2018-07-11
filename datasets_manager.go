@@ -2,8 +2,10 @@ package tau
 
 import (
     // "errors";
+    "fmt";
     "context";
     "path/filepath";
+    "sync";
 
     "github.com/marekgalovic/tau/storage";
     pb "github.com/marekgalovic/tau/protobuf";
@@ -32,9 +34,11 @@ type datasetsManager struct {
     storage storage.Storage
 
     datasets map[string]Dataset
+    datasetsMutex *sync.RWMutex
     datasetChangesNotifications utils.Broadcast
 
     localDatasets map[string]struct{}
+    localDatasetsMutex *sync.RWMutex
 }
 
 type DatasetsChangedNotification struct {
@@ -51,15 +55,45 @@ func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cl
         storage: storage,
 
         datasets: make(map[string]Dataset),
+        datasetsMutex: &sync.RWMutex{},
         datasetChangesNotifications: utils.NewThreadSafeBroadcast(),
 
         localDatasets: make(map[string]struct{}),
+        localDatasetsMutex: &sync.RWMutex{},
     }
     if err := dm.bootstrapZk(); err != nil {
         return nil, err
     }
 
     return dm, nil
+}
+
+func (dm *datasetsManager) addDataset(name string, dataset Dataset) {
+    defer dm.datasetsMutex.Unlock()
+    dm.datasetsMutex.Lock()
+
+    dm.datasets[name] = dataset
+}
+
+func (dm *datasetsManager) deleteDataset(name string) {
+    defer dm.datasetsMutex.RUnlock()
+    dm.datasetsMutex.RLock()
+
+    delete(dm.datasets, name)
+}
+
+func (dm *datasetsManager) addLocalDataset(name string, partitions []string) {
+    defer dm.localDatasetsMutex.Unlock()
+    dm.localDatasetsMutex.Lock()
+
+    dm.localDatasets[name] = struct{}{}
+}
+
+func (dm *datasetsManager) deleteLocalDataset(name string) {
+    defer dm.localDatasetsMutex.RUnlock()
+    dm.localDatasetsMutex.RLock()
+
+    delete(dm.localDatasets, name)
 }
 
 func (dm *datasetsManager) bootstrapZk() error {
@@ -79,18 +113,32 @@ func (dm *datasetsManager) bootstrapZk() error {
     return nil
 }
 
-func (dm *datasetsManager) Run() error {
-    nodes, err := dm.cluster.ListNodes()
-    if err != nil {
-        return err
-    }
+func (dm *datasetsManager) bootstrapLocalDatasets() error {
     datasetsWithPartitions, err := dm.ListDatasetsWithPartitions()
     if err != nil {
         return err
     }
 
-    log.Info(nodes)
-    log.Info(datasetsWithPartitions)
+    for dataset, partitions := range datasetsWithPartitions {
+        dm.addDataset(dataset.Meta().GetName(), dataset)
+
+        for _, partitionId := range partitions {
+            shouldOwn, err := dm.shouldOwn(dataset.Meta().GetName(), partitionId)
+            if err != nil {
+                return err
+            }
+            if shouldOwn {
+                go dm.buildDatasetPartitionReplica(dataset, partitionId)
+            }
+        }
+    }
+    return nil
+}
+
+func (dm *datasetsManager) Run() error {
+    if err := dm.bootstrapLocalDatasets(); err != nil {
+        return err
+    }
 
     go dm.watchDatasets()
     go dm.run()
@@ -122,20 +170,22 @@ func (dm *datasetsManager) updateDatasets(datasets []string) error {
         updatedDatasets.Add(datasetName)
 
         if _, exists := dm.datasets[datasetName]; !exists {
-            var err error
-            if dm.datasets[datasetName], err = dm.GetDataset(datasetName); err != nil {
+            dataset, err := dm.GetDataset(datasetName)
+            if err != nil {
                 return err
             }
+            dm.addDataset(datasetName, dataset)
+
             dm.datasetChangesNotifications.Send(&DatasetsChangedNotification{
                 Event: EventDatasetCreated,
-                Dataset: dm.datasets[datasetName],
+                Dataset: dataset,
             })
         }
     }
 
     for datasetName, dataset := range dm.datasets {
         if !updatedDatasets.Contains(datasetName) {
-            delete(dm.datasets, datasetName)
+            dm.deleteDataset(datasetName)
             dm.datasetChangesNotifications.Send(&DatasetsChangedNotification{
                 Event: EventDatasetDeleted,
                 Dataset: dataset,
@@ -180,60 +230,96 @@ func (dm *datasetsManager) run() {
 }
 
 func (dm *datasetsManager) datasetCreated(dataset Dataset) {
-    node, err := dm.cluster.GetHrwNode(dataset.Meta().GetName())
+    partitions, err := dm.listDatasetPartitions(dataset.Meta().GetName())
     if err != nil {
         panic(err)
     }
 
-    if node.Meta().GetUuid() == dm.cluster.Uuid() {
-        log.Infof("Own: %s", dataset.Meta().GetName())
-        dm.localDatasets[dataset.Meta().GetName()] = struct{}{}
+    for _, partitionId := range partitions {
+        shouldOwn, err := dm.shouldOwn(dataset.Meta().GetName(), partitionId)
+        if err != nil {
+            panic(err)
+        }
+        if shouldOwn {
+            dm.buildDatasetPartitionReplica(dataset, partitionId)
+        }
     }
 }
 
 func (dm *datasetsManager) datasetDeleted(dataset Dataset) {
     if _, exists := dm.localDatasets[dataset.Meta().GetName()]; exists {
         log.Infof("Delete local: %s", dataset.Meta().GetName())
+        dm.deleteLocalDataset(dataset.Meta().GetName())
     }
 }
 
 func (dm *datasetsManager) nodeCreated(node Node) {
     for datasetName, _ := range dm.localDatasets {
-        node, err := dm.cluster.GetHrwNode(datasetName)
+        partitions, err := dm.listDatasetPartitions(datasetName)
         if err != nil {
             panic(err)
         }
 
-        if node.Meta().GetUuid() != dm.cluster.Uuid() {
-            log.Infof("Release ownership: %s", datasetName)
-            delete(dm.localDatasets, datasetName)
+        for _, partitionId := range partitions {
+            shouldOwn, err := dm.shouldOwn(datasetName, partitionId)
+            if err != nil {
+                panic(err)
+            }
+            if !shouldOwn {
+                log.Infof("Release ownership: %s", datasetName)
+                dm.deleteLocalDataset(datasetName)
+            }
         }
     }
 }
 
 func (dm *datasetsManager) nodeDeleted(node Node) {
-    for _, dataset := range dm.datasets {
-        topNode, err := dm.cluster.GetHrwNode(dataset.Meta().GetName())
-        if err != nil {
-            panic(err)
-        }
+    // :TODO: Check only datasets previously owned by the deleted node
+    datasetsWithPartitions, err := dm.ListDatasetsWithPartitions()
+    if err != nil {
+        panic(err)
+    }
 
-        if topNode.Meta().GetUuid() == dm.cluster.Uuid() {
-            log.Infof("Own: %s", dataset.Meta().GetName())
-            dm.localDatasets[dataset.Meta().GetName()] = struct{}{}
+    for dataset, partitions := range datasetsWithPartitions {
+        for _, partitionId := range partitions {
+            shouldOwn, err := dm.shouldOwn(dataset.Meta().GetName(), partitionId)
+            if err != nil {
+                panic(err)
+            }
+            if shouldOwn {
+                dm.buildDatasetPartitionReplica(dataset, partitionId)
+            }
         }
     }
 }
+
+func (dm *datasetsManager) buildDatasetPartitionReplica(dataset Dataset, partition string) {
+    log.Infof("Own dataset: %s, partition: %s", dataset.Meta().GetName(), partition)
+    dm.addLocalDataset(dataset.Meta().GetName(), []string{})
+}
+
+func (dm *datasetsManager) shouldOwn(datasetName, partitionId string) (bool, error) {
+    node, err := dm.cluster.GetHrwNode(fmt.Sprintf("%s.%s", datasetName, partitionId))
+    if err != nil {
+        return false, err
+    }
+
+    return node.Meta().GetUuid() == dm.cluster.Uuid(), nil
+}
  
-func (dm *datasetsManager) ListDatasetsWithPartitions() (map[string][]string, error) {
+func (dm *datasetsManager) ListDatasetsWithPartitions() (map[Dataset][]string, error) {
     datasets, _, err := dm.zk.Children(dm.zkDatasetsPath())
     if err != nil {
         return nil, err
     }
 
-    result := make(map[string][]string)
-    for _, dataset := range datasets {
-        partitions, err := dm.listDatasetPartitions(dataset)
+    result := make(map[Dataset][]string)
+    for _, datasetName := range datasets {
+        dataset, err := dm.GetDataset(datasetName)
+        if err != nil {
+            return nil, err
+        }
+        partitions, err := dm.listDatasetPartitions(datasetName)
         if err != nil {
             return nil, err
         }

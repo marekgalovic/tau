@@ -1,7 +1,7 @@
 package main
 
 import (
-    "time";
+    // "time";
 
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/client";
@@ -10,13 +10,7 @@ import (
     log "github.com/Sirupsen/logrus"
 )
 
-func main() {
-    client, err := client.New("127.0.0.1:5555", grpc.WithInsecure())
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer client.Close()
-
+func printDatasets(client client.Client) {
     datasets, err := client.ListDatasets()
     if err != nil {
         log.Fatal(err)
@@ -24,6 +18,16 @@ func main() {
     for _, dataset := range datasets {
         log.Infof("Name: %s, Partitions: %d, Replicas: %d, Index: %s", dataset.GetName(), dataset.GetNumPartitions(), dataset.GetNumReplicas(), dataset.GetIndex())
     }
+}
+
+func main() {
+    client, err := client.New("127.0.0.1:5555", grpc.WithInsecure())
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer client.Close()
+
+    printDatasets(client)
 
     name := "foobar1"
     d := &pb.Dataset {
@@ -43,15 +47,22 @@ func main() {
         },
     }
 
-    for i := 0; i < 100; i++ {
-        if err := client.CreateDataset(d); err != nil {
-            log.Fatal(err)
-        }
-
-        <- time.After(10 * time.Millisecond)
-
-        if err := client.DeleteDataset(name); err != nil {
-            log.Fatal(err)
-        }
+    if err := client.CreateDataset(d); err != nil {
+        log.Fatal(err)
     }
+
+    printDatasets(client)
+
+
+    // for i := 0; i < 100; i++ {
+    //     if err := client.CreateDataset(d); err != nil {
+    //         log.Fatal(err)
+    //     }
+
+    //     <- time.After(10 * time.Millisecond)
+
+    //     if err := client.DeleteDataset(name); err != nil {
+    //         log.Fatal(err)
+    //     }
+    // }
 }

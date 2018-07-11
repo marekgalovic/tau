@@ -52,7 +52,7 @@ func (service *datasetsService) Get(ctx context.Context, req *pb.GetDatasetReque
 }
 
 func (service *datasetsService) Create(ctx context.Context, req *pb.CreateDatasetRequest) (*pb.EmptyResponse, error) {
-    partitions, err := service.getDatasetPartitions(req.GetDataset())
+    partitions, err := service.computeDatasetPartitions(req.GetDataset())
     if err != nil {
         return nil, err
     }
@@ -66,6 +66,16 @@ func (service *datasetsService) Create(ctx context.Context, req *pb.CreateDatase
 func (service *datasetsService) CreateWithPartitions(ctx context.Context, req *pb.CreateDatasetWithPartitionsRequest) (*pb.EmptyResponse, error) {
     dataset := req.GetDataset()
     partitions := req.GetPartitions()
+
+    if dataset == nil {
+        return nil, errors.New("No dataset")
+    }
+    if partitions == nil {
+        return nil, errors.New("No partitions")
+    }
+    if len(partitions) == 0 {
+        return nil, errors.New("No partitions")
+    }
 
     datasetData, err := proto.Marshal(dataset)
     if err != nil {
@@ -94,7 +104,7 @@ func (service *datasetsService) CreateWithPartitions(ctx context.Context, req *p
     if _, err := service.zk.Multi(requests...); err != nil {
         return nil, err
     }
-
+    
     return &pb.EmptyResponse{}, nil
 }
 
@@ -104,6 +114,24 @@ func (service *datasetsService) Delete(ctx context.Context, req *pb.DeleteDatase
     }
 
     return &pb.EmptyResponse{}, nil
+}
+
+func (service *datasetsService) ListPartitions(req *pb.ListPartitionsRequest, stream pb.DatasetsService_ListPartitionsServer) error {
+    partitions, _, err := service.zk.Children(filepath.Join(service.zkDatasetsPath(), req.GetDatasetName(), "partitions"))
+    if err != nil {
+        return err
+    }
+
+    for _, partitionId := range partitions {
+        partition, err := service.getDatasetPartition(req.GetDatasetName(), partitionId)
+        if err != nil {
+            return err
+        }
+        if err := stream.Send(partition); err != nil {
+            return err
+        }
+    }
+    return nil
 }
 
 func (service *datasetsService) zkDatasetsPath() string {
@@ -126,7 +154,20 @@ func (service *datasetsService) getDataset(name string) (*pb.Dataset, error) {
     return dataset, nil
 }
 
-func (service *datasetsService) getDatasetPartitions(dataset *pb.Dataset) ([]*pb.DatasetPartition, error) {
+func (service *datasetsService) getDatasetPartition(datasetName, partitionId string) (*pb.DatasetPartition, error) {
+    partitionData, _, err := service.zk.Get(filepath.Join(service.zkDatasetsPath(), datasetName, "partitions", partitionId))
+    if err != nil {
+        return nil, err
+    }
+
+    partition := &pb.DatasetPartition{}
+    if err = proto.Unmarshal(partitionData, partition); err != nil {
+        return nil, err
+    }
+    return partition, nil
+}
+
+func (service *datasetsService) computeDatasetPartitions(dataset *pb.Dataset) ([]*pb.DatasetPartition, error) {
     files, err := service.storage.ListFiles(dataset.GetPath())
     if err != nil {
         return nil, err
@@ -136,7 +177,6 @@ func (service *datasetsService) getDatasetPartitions(dataset *pb.Dataset) ([]*pb
     numPartitions := int(dataset.GetNumPartitions())
     if len(files) < numPartitions {
         return nil, errors.New("Number of partitions is greater than the number of files")
-        numPartitions = len(files)
     }
 
     partitions := make([]*pb.DatasetPartition, numPartitions)
