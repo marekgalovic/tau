@@ -37,7 +37,7 @@ type datasetsManager struct {
     datasetsMutex *sync.RWMutex
     datasetChangesNotifications utils.Broadcast
 
-    localDatasets map[string]struct{}
+    localDatasets map[string][]string
     localDatasetsMutex *sync.RWMutex
 }
 
@@ -58,7 +58,7 @@ func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cl
         datasetsMutex: &sync.RWMutex{},
         datasetChangesNotifications: utils.NewThreadSafeBroadcast(),
 
-        localDatasets: make(map[string]struct{}),
+        localDatasets: make(map[string][]string),
         localDatasetsMutex: &sync.RWMutex{},
     }
     if err := dm.bootstrapZk(); err != nil {
@@ -68,11 +68,11 @@ func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cl
     return dm, nil
 }
 
-func (dm *datasetsManager) addDataset(name string, dataset Dataset) {
+func (dm *datasetsManager) addDataset(dataset Dataset) {
     defer dm.datasetsMutex.Unlock()
     dm.datasetsMutex.Lock()
 
-    dm.datasets[name] = dataset
+    dm.datasets[dataset.Meta().GetName()] = dataset
 }
 
 func (dm *datasetsManager) deleteDataset(name string) {
@@ -86,7 +86,7 @@ func (dm *datasetsManager) addLocalDataset(name string, partitions []string) {
     defer dm.localDatasetsMutex.Unlock()
     dm.localDatasetsMutex.Lock()
 
-    dm.localDatasets[name] = struct{}{}
+    dm.localDatasets[name] = partitions
 }
 
 func (dm *datasetsManager) deleteLocalDataset(name string) {
@@ -120,16 +120,20 @@ func (dm *datasetsManager) bootstrapLocalDatasets() error {
     }
 
     for dataset, partitions := range datasetsWithPartitions {
-        dm.addDataset(dataset.Meta().GetName(), dataset)
+        dm.addDataset(dataset)
 
+        ownedPartitions := make([]string, 0)
         for _, partitionId := range partitions {
             shouldOwn, err := dm.shouldOwn(dataset.Meta().GetName(), partitionId)
             if err != nil {
                 return err
             }
             if shouldOwn {
-                go dm.buildDatasetPartitionReplica(dataset, partitionId)
+                ownedPartitions = append(ownedPartitions, partitionId)
             }
+        }
+        if len(ownedPartitions) > 0 {
+            go dm.buildDatasetPartitions(dataset, ownedPartitions)
         }
     }
     return nil
@@ -174,7 +178,7 @@ func (dm *datasetsManager) updateDatasets(datasets []string) error {
             if err != nil {
                 return err
             }
-            dm.addDataset(datasetName, dataset)
+            dm.addDataset(dataset)
 
             dm.datasetChangesNotifications.Send(&DatasetsChangedNotification{
                 Event: EventDatasetCreated,
@@ -206,10 +210,8 @@ func (dm *datasetsManager) run() {
 
             switch notification.Event {
             case EventNodeCreated:
-                log.Infof("DM node created: %s", notification.Node.Meta().GetUuid())
                 go dm.nodeCreated(notification.Node)
             case EventNodeDeleted:
-                log.Infof("DM node deleted: %s", notification.Node.Meta().GetUuid())
                 go dm.nodeDeleted(notification.Node)
             }
         case n := <- datasetNotifications:
@@ -217,10 +219,8 @@ func (dm *datasetsManager) run() {
 
             switch notification.Event {
             case EventDatasetCreated:
-                log.Infof("DM dataset created: %s", notification.Dataset.Meta().GetName())
                 go dm.datasetCreated(notification.Dataset)
             case EventDatasetDeleted:
-                log.Infof("DM dataset deleted: %s", notification.Dataset.Meta().GetName())
                 go dm.datasetDeleted(notification.Dataset)
             }
         case <- dm.ctx.Done():
@@ -235,14 +235,18 @@ func (dm *datasetsManager) datasetCreated(dataset Dataset) {
         panic(err)
     }
 
+    ownedPartitions := make([]string, 0)
     for _, partitionId := range partitions {
         shouldOwn, err := dm.shouldOwn(dataset.Meta().GetName(), partitionId)
         if err != nil {
             panic(err)
         }
         if shouldOwn {
-            dm.buildDatasetPartitionReplica(dataset, partitionId)
+            ownedPartitions = append(ownedPartitions, partitionId)
         }
+    }
+    if len(ownedPartitions) > 0 {
+        dm.buildDatasetPartitions(dataset, ownedPartitions)
     }
 }
 
@@ -260,15 +264,18 @@ func (dm *datasetsManager) nodeCreated(node Node) {
             panic(err)
         }
 
+        releasedPartitions := make([]string, 0)
         for _, partitionId := range partitions {
             shouldOwn, err := dm.shouldOwn(datasetName, partitionId)
             if err != nil {
                 panic(err)
             }
             if !shouldOwn {
-                log.Infof("Release ownership: %s", datasetName)
-                dm.deleteLocalDataset(datasetName)
+                releasedPartitions = append(releasedPartitions, partitionId)
             }
+        }
+        if len(releasedPartitions) > 0 {
+            dm.releaseDatasetPartitions(datasetName, releasedPartitions)
         }
     }
 }
@@ -281,21 +288,30 @@ func (dm *datasetsManager) nodeDeleted(node Node) {
     }
 
     for dataset, partitions := range datasetsWithPartitions {
+        ownedPartitions := make([]string, 0)
         for _, partitionId := range partitions {
             shouldOwn, err := dm.shouldOwn(dataset.Meta().GetName(), partitionId)
             if err != nil {
                 panic(err)
             }
             if shouldOwn {
-                dm.buildDatasetPartitionReplica(dataset, partitionId)
+                ownedPartitions = append(ownedPartitions, partitionId)
             }
+        }
+        if len(ownedPartitions) > 0 {
+            dm.buildDatasetPartitions(dataset, ownedPartitions)
         }
     }
 }
 
-func (dm *datasetsManager) buildDatasetPartitionReplica(dataset Dataset, partition string) {
-    log.Infof("Own dataset: %s, partition: %s", dataset.Meta().GetName(), partition)
-    dm.addLocalDataset(dataset.Meta().GetName(), []string{})
+func (dm *datasetsManager) buildDatasetPartitions(dataset Dataset, partitions []string) {
+    log.Infof("Own dataset: %s, partitions: %s", dataset.Meta().GetName(), partitions)
+    dm.addLocalDataset(dataset.Meta().GetName(), partitions)
+}
+
+func (dm *datasetsManager) releaseDatasetPartitions(datasetName string, partitions []string) {
+    log.Infof("Release dataset: %s, partitions: %s", datasetName, partitions)
+    dm.deleteLocalDataset(datasetName)
 }
 
 func (dm *datasetsManager) shouldOwn(datasetName, partitionId string) (bool, error) {

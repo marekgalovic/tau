@@ -26,7 +26,6 @@ type Cluster interface {
     NodesCount() (int, error)
     ListNodes() ([]Node, error)
     GetNode(string) (Node, error)
-    NotifyWhenMaster() <-chan interface{}
     GetHrwNode(string) (Node, error)
     NodeChanges() <-chan interface{}
 }
@@ -47,7 +46,6 @@ type cluster struct {
     nodes map[string]Node
     nodeChangesNotifications utils.Broadcast
 
-    isMasterNotifications utils.Broadcast
     connCache map[string]*grpc.ClientConn
 }
 
@@ -81,7 +79,6 @@ func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, 
         uuid: uuid,
         nodes: make(map[string]Node),
         nodeChangesNotifications: utils.NewThreadSafeBroadcast(),
-        isMasterNotifications: utils.NewThreadSafeBroadcast(),
         connCache: make(map[string]*grpc.ClientConn),
     }
 
@@ -93,7 +90,6 @@ func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, 
     }
 
     go c.watchNodes()
-    go c.watchMaster()
     go c.closeClientConnections()
 
     return c, nil
@@ -185,62 +181,6 @@ func (c *cluster) updateNodes(nodes []string) error {
     return nil
 }
 
-func (c *cluster) watchMaster() {
-    for {
-        nodes, err := c.ListNodes()
-        if err != nil {
-            panic(err)
-        }
-
-        if len(nodes) == 0 {
-            panic("No nodes")
-        }
-
-        var leaderSeqId, candidateSeqId int64 = math.MaxInt64, math.MaxInt64
-        var leader, candidate Node
-        for _, node := range nodes {
-            seqId := node.Meta().GetSeqId()
-            if seqId < leaderSeqId {
-                leaderSeqId = seqId
-                leader = node
-            }
-            if (seqId < c.seqId) && (seqId < candidateSeqId) {
-                candidateSeqId = seqId
-                candidate = node
-            }
-        }
-
-        if c.seqId == leader.Meta().GetSeqId() {
-            log.Info("Node is master")
-            c.isMasterNotifications.Send(true)
-            c.isMasterNotifications.Close()
-            return
-        }
-
-        if candidate == nil {
-            panic("No candidate node")
-        }
-
-        exists, _, event, err := c.zk.ExistsW(candidate.Meta().GetZkPath())
-        if err != nil {
-            panic("Failed to get candidate")
-        }
-        if !exists {
-            panic("Candidate node does not exist")
-        }
-
-        log.WithFields(log.Fields{
-            "zk_path": candidate.Meta().GetZkPath(),
-        }).Info("Following candidate master")
-        select {
-        case <- event:
-            continue
-        case <- c.ctx.Done():
-            return
-        }
-    }
-}
-
 func (c *cluster) closeClientConnections() {
     select {
     case <- c.ctx.Done():
@@ -254,10 +194,6 @@ func (c *cluster) closeClientConnections() {
 
 func (c *cluster) Uuid() string {
     return c.uuid
-}
-
-func (c *cluster) NotifyWhenMaster() <-chan interface{} {
-    return c.isMasterNotifications.Listen(0)
 }
 
 func (c *cluster) NodesCount() (int, error) {
