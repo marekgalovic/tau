@@ -17,6 +17,7 @@ type Client interface {
     ListDatasets() ([]*pb.Dataset, error)
     GetDataset(string) (*pb.Dataset, error)
     CreateDataset(*pb.Dataset) error
+    CreateDatasetWithPartitions(*pb.Dataset, []*pb.DatasetPartition) error
     DeleteDataset(string) error
 }
 
@@ -71,6 +72,15 @@ func (c *client) GetDataset(name string) (*pb.Dataset, error) {
 
 func (c *client) CreateDataset(dataset *pb.Dataset) error {
     _, err := c.datasetsService.Create(context.Background(), &pb.CreateDatasetRequest{Dataset: dataset})
+
+    return err
+}
+
+func (c *client) CreateDatasetWithPartitions(dataset *pb.Dataset, partitions []*pb.DatasetPartition) error {
+    _, err := c.datasetsService.CreateWithPartitions(context.Background(), &pb.CreateDatasetWithPartitionsRequest{
+        Dataset: dataset,
+        Partitions: partitions,
+    })
 
     return err
 }

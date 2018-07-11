@@ -21,6 +21,11 @@ type datasetsService struct {
     storage storage.Storage
 }
 
+var (
+    ErrDatasetNotFound error = errors.New("Dataset not found")
+    ErrDatasetAlreadyExists error = errors.New("Dataset already exists")    
+)
+
 func newDatasetsService(config *Config, zkConn *zk.Conn, storage storage.Storage) *datasetsService {
     return &datasetsService {
         config: config,
@@ -87,21 +92,25 @@ func (service *datasetsService) CreateWithPartitions(ctx context.Context, req *p
         &zk.CreateRequest{Path: filepath.Join(service.zkDatasetsPath(), dataset.GetName(), "partitions"), Data: nil, Flags: int32(0), Acl: zk.WorldACL(zk.PermAll)},
     }
 
-    for i, partition := range partitions {
+    for _, partition := range partitions {
         partitionData, err := proto.Marshal(partition)
         if err != nil {
             return nil, err
         }
 
         requests = append(requests, &zk.CreateRequest{
-            Path: filepath.Join(service.zkDatasetsPath(), dataset.GetName(), "partitions", fmt.Sprintf("%d", i)),
+            Path: filepath.Join(service.zkDatasetsPath(), dataset.GetName(), "partitions", fmt.Sprintf("%d", partition.Id)),
             Data: partitionData,
             Flags: int32(0),
             Acl: zk.WorldACL(zk.PermAll),
         })
     }
 
-    if _, err := service.zk.Multi(requests...); err != nil {
+    _, err = service.zk.Multi(requests...)
+    if err == zk.ErrNodeExists {
+        return nil, ErrDatasetAlreadyExists
+    }
+    if err != nil {
         return nil, err
     }
     
@@ -109,7 +118,11 @@ func (service *datasetsService) CreateWithPartitions(ctx context.Context, req *p
 }
 
 func (service *datasetsService) Delete(ctx context.Context, req *pb.DeleteDatasetRequest) (*pb.EmptyResponse, error) {
-    if err := utils.ZkRecursiveDelete(service.zk, filepath.Join(service.zkDatasetsPath(), req.GetName())); err != nil {
+    err := utils.ZkRecursiveDelete(service.zk, filepath.Join(service.zkDatasetsPath(), req.GetName()));
+    if err == zk.ErrNoNode {
+        return nil, ErrDatasetNotFound
+    }
+    if err != nil {
         return nil, err
     }
 
@@ -118,6 +131,9 @@ func (service *datasetsService) Delete(ctx context.Context, req *pb.DeleteDatase
 
 func (service *datasetsService) ListPartitions(req *pb.ListPartitionsRequest, stream pb.DatasetsService_ListPartitionsServer) error {
     partitions, _, err := service.zk.Children(filepath.Join(service.zkDatasetsPath(), req.GetDatasetName(), "partitions"))
+    if err == zk.ErrNoNode {
+        return ErrDatasetNotFound
+    }
     if err != nil {
         return err
     }
@@ -141,6 +157,9 @@ func (service *datasetsService) zkDatasetsPath() string {
 func (service *datasetsService) getDataset(name string) (*pb.Dataset, error) {
     zkPath := filepath.Join(service.zkDatasetsPath(), name)
     datasetData, _, err := service.zk.Get(zkPath)
+    if err == zk.ErrNoNode {
+        return nil, ErrDatasetNotFound
+    }
     if err != nil {
         return nil, err
     }

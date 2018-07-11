@@ -29,11 +29,11 @@ func main() {
 
     printDatasets(client)
 
-    name := "foobar1"
+    name := "dataset2"
     d := &pb.Dataset {
         Name: name,
-        Path: "./examples/data/random_*",
-        NumPartitions: 1,
+        // Path: "./examples/data/random_*",
+        // NumPartitions: 1,
         NumReplicas: 1,
         Index: &pb.Index {
             Size: 256,
@@ -47,7 +47,14 @@ func main() {
         },
     }
 
-    if err := client.CreateDataset(d); err != nil {
+    p := []*pb.DatasetPartition {
+        &pb.DatasetPartition{Id: 1, Files: []string{"./examples/data/random_normal.csv"}},
+        &pb.DatasetPartition{Id: 2, Files: []string{"./examples/data/random_normal.csv"}},
+        &pb.DatasetPartition{Id: 3, Files: []string{"./examples/data/random_normal.csv"}},
+        &pb.DatasetPartition{Id: 4, Files: []string{"./examples/data/random_normal.csv"}},
+        &pb.DatasetPartition{Id: 5, Files: []string{"./examples/data/random_normal.csv"}},
+    }
+    if err := client.CreateDatasetWithPartitions(d, p); err != nil {
         log.Fatal(err)
     }
 

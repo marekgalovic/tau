@@ -1,7 +1,9 @@
 package utils
 
 import (
+    "fmt";
     "sync";
+    "strings";
 )
 
 type Set interface {
@@ -9,58 +11,75 @@ type Set interface {
     Add(interface{})
     Remove(interface{})
     Contains(interface{}) bool
+    Difference(Set) Set
+    Union(Set) Set
     ToIterator() <-chan interface{}
     ToSlice() []interface{}
+    String() string
 }
 
-type baseSet struct {
-    elements map[interface{}]struct{}
+type baseSet map[interface{}]struct{}
+
+type threadSafeSet struct {
+    baseSet
     mutex *sync.Mutex
 }
 
-func NewSet() Set {
-    return &baseSet{
-        elements: make(map[interface{}]struct{}),
-        mutex: &sync.Mutex{},
+func NewSet(elements ...interface{}) Set {
+    set := make(baseSet)
+    for _, element := range elements {
+        set.Add(element)
     }
+    return &set
 }
 
 func (s *baseSet) Len() int {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-
-    return len(s.elements)
+    return len(*s)
 }
 
 func (s *baseSet) Add(element interface{}) {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-
-    s.elements[element] = struct{}{}
+    (*s)[element] = struct{}{}
 }
 
 func (s *baseSet) Remove(element interface{}) {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-    
-    delete(s.elements, element)
+    delete(*s, element)
 }
 
 func(s *baseSet) Contains(element interface{}) bool {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-
-    _, exists := s.elements[element]
+    _, exists := (*s)[element]
     return exists
+}
+
+func (s *baseSet) Difference(other Set) Set {
+    result := make(baseSet)
+
+    for _, element := range *s {
+        if !other.Contains(element) {
+            result.Add(element)
+        }
+    }
+
+    return &result
+}
+
+func (s *baseSet) Union(other Set) Set {
+    o := other.(*baseSet)
+    result := make(baseSet)
+
+    for _, element := range *s {
+        result.Add(element)
+    }
+    for _, element := range *o {
+        result.Add(element)
+    }
+
+    return &result
 }
 
 func (s *baseSet) ToIterator() <-chan interface{} {
     returnChan := make(chan interface{})
     go func() {
-        defer s.mutex.Unlock()
-        s.mutex.Lock()
-
-        for element, _ := range s.elements {
+        for element, _ := range *s {
             returnChan <- element
         }
         close(returnChan)
@@ -69,12 +88,88 @@ func (s *baseSet) ToIterator() <-chan interface{} {
 }
 
 func (s *baseSet) ToSlice() []interface{} {
-    defer s.mutex.Unlock()
-    s.mutex.Lock()
-
-    slice := make([]interface{}, 0, len(s.elements))
-    for element, _ := range s.elements {
+    slice := make([]interface{}, 0, s.Len())
+    for element, _ := range *s {
         slice = append(slice, element)
     }
     return slice
+}
+
+func (s *baseSet) String() string {
+    elementStrings := make([]string, s.Len())
+
+    i := 0
+    for element, _ := range *s {
+        elementStrings[i] = fmt.Sprintf("%v", element)
+        i++
+    }
+
+    return fmt.Sprintf("{%s}", strings.Join(elementStrings, ", "))
+}
+
+func NewThreadSafeSet(elements ...interface{}) Set {
+    set := &threadSafeSet {
+        baseSet: make(baseSet),
+        mutex: &sync.Mutex{},
+    }
+    for _, element := range elements {
+        set.baseSet.Add(element)
+    }
+    return set
+}
+
+func (s *threadSafeSet) Len() int {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.Len() 
+}
+
+func (s *threadSafeSet) Add(element interface{}) {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    s.baseSet.Add(element)
+}
+
+func (s *threadSafeSet) Remove(element interface{}) {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    s.baseSet.Remove(element) 
+}
+
+func (s *threadSafeSet) Contains(element interface{}) bool {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.Contains(element)
+}
+
+func (s *threadSafeSet) Difference(other Set) Set {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.Difference(other)
+}
+
+func (s *threadSafeSet) Union(other Set) Set {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.Union(other)
+}
+
+func (s *threadSafeSet) ToSlice() []interface{} {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.ToSlice()
+}
+
+func (s *threadSafeSet) String() string {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.String()
 }

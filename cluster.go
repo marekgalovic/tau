@@ -6,6 +6,7 @@ import (
     "context";
     "errors";
     "path/filepath";
+    "sort";
 
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/utils";
@@ -27,6 +28,7 @@ type Cluster interface {
     ListNodes() ([]Node, error)
     GetNode(string) (Node, error)
     GetHrwNode(string) (Node, error)
+    GetTopHrwNodes(int, string) (utils.Set, error)
     NodeChanges() <-chan interface{}
 }
 
@@ -57,6 +59,11 @@ type node struct {
 type NodesChangedNotification struct {
     Event int32
     Node Node
+}
+
+type hrwNodeScore struct {
+    Uuid string
+    Score float32
 }
 
 func newNode(meta *pb.Node, cluster *cluster) Node {
@@ -255,6 +262,33 @@ func (c *cluster) GetHrwNode(key string) (Node, error) {
         }
     }
     return topNode, nil
+}
+
+func (c *cluster) GetTopHrwNodes(n int, key string) (utils.Set, error) {
+    if len(c.nodes) == 0 {
+        return nil, errors.New("No nodes")
+    }
+
+    scores := make([]*hrwNodeScore, len(c.nodes))
+    i := 0
+    for _, node := range c.nodes {
+        scores[i] = &hrwNodeScore {
+            Uuid: node.Meta().GetUuid(),
+            Score: utils.RendezvousHashScore(node.Meta().GetUuid(), key, 1),
+        }
+        i++
+    }
+    sort.Slice(scores, func(i, j int) bool {
+        return scores[i].Score > scores[j].Score
+    })
+
+    result := utils.NewSet()
+    for i := 0; i < n; i++ {
+        if i < len(c.nodes) {
+            result.Add(scores[i].Uuid)
+        }
+    }
+    return result, nil
 }
 
 func (c *cluster) NodeChanges() <-chan interface{} {
