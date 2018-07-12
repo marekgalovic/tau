@@ -14,7 +14,7 @@ import (
 
 func main() {
     config := tau.NewConfig()
-    config.Server.Port = "5559"
+    config.Server.Port = "5556"
 
     zkConn, _, err := zk.Connect(config.Zookeeper.Nodes, 1 * time.Second)
     if err != nil {

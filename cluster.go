@@ -62,8 +62,8 @@ type NodesChangedNotification struct {
 }
 
 type hrwNodeScore struct {
-    Uuid string
-    Score float64
+    uuid string
+    score float64
 }
 
 func newNode(meta *pb.Node, cluster *cluster) Node {
@@ -273,20 +273,22 @@ func (c *cluster) GetTopHrwNodes(n int, key string) (utils.Set, error) {
     i := 0
     for _, node := range c.nodes {
         scores[i] = &hrwNodeScore {
-            Uuid: node.Meta().GetUuid(),
-            Score: utils.RendezvousHashScore(node.Meta().GetUuid(), key, 1),
+            uuid: node.Meta().GetUuid(),
+            score: utils.RendezvousHashScore(node.Meta().GetUuid(), key, 1),
         }
         i++
     }
     sort.Slice(scores, func(i, j int) bool {
-        return scores[i].Score > scores[j].Score
+        return scores[i].score > scores[j].score
     })
 
     result := utils.NewSet()
     for i := 0; i < n; i++ {
         if i < len(c.nodes) {
-            result.Add(scores[i].Uuid)
+            result.Add(scores[i].uuid)
+            continue
         }
+        break
     }
     return result, nil
 }
