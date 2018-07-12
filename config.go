@@ -1,7 +1,9 @@
 package tau
 
 import (
+    "os"
     "fmt";
+    "flag";
 )
 
 type Config struct {
@@ -21,7 +23,7 @@ type ZookeeperConfig struct {
 }
 
 func NewConfig() *Config {
-    return &Config {
+    c := &Config {
         IndexPath: "/tmp",
         Server: ServerConfig {
             Address: "",
@@ -32,6 +34,17 @@ func NewConfig() *Config {
             BasePath: "/tau",
         },
     }
+
+    c.parseFlags()
+    return c
+}
+
+func (c *Config) parseFlags() {
+    flagSet := flag.NewFlagSet("Tau Server", flag.ExitOnError)
+    flagSet.StringVar(&c.Server.Address, "address", c.Server.Address, "Server address")
+    flagSet.StringVar(&c.Server.Port, "port", c.Server.Port, "Server port")
+    flagSet.StringVar(&c.IndexPath, "index-path", c.IndexPath, "Index path")
+    flagSet.Parse(os.Args[1:])
 }
 
 func (c *Config) BindAddress() string {

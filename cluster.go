@@ -6,6 +6,7 @@ import (
     "context";
     "errors";
     "path/filepath";
+    "sync";
     "sort";
 
     pb "github.com/marekgalovic/tau/protobuf";
@@ -46,6 +47,7 @@ type cluster struct {
     seqId int64
 
     nodes map[string]Node
+    nodesMutex *sync.Mutex
     nodeChangesNotifications utils.Broadcast
 
     connCache map[string]*grpc.ClientConn
@@ -85,6 +87,7 @@ func NewCluster(ctx context.Context, config *Config, zkConn *zk.Conn) (Cluster, 
         zk: zkConn,
         uuid: uuid,
         nodes: make(map[string]Node),
+        nodesMutex: &sync.Mutex{},
         nodeChangesNotifications: utils.NewThreadSafeBroadcast(),
         connCache: make(map[string]*grpc.ClientConn),
     }
@@ -166,7 +169,9 @@ func (c *cluster) updateNodes(nodes []string) error {
             if err != nil {
                 return err
             }
+            c.nodesMutex.Lock()
             c.nodes[nodeName] = node
+            c.nodesMutex.Unlock()
 
             c.nodeChangesNotifications.Send(&NodesChangedNotification{Event: EventNodeCreated, Node: node})
             log.WithFields(log.Fields{
@@ -176,6 +181,8 @@ func (c *cluster) updateNodes(nodes []string) error {
         }
     }
 
+    defer c.nodesMutex.Unlock()
+    c.nodesMutex.Lock()
     for nodeName, node := range c.nodes {
         if !updatedNodes.Contains(nodeName) {
             delete(c.nodes, nodeName)
@@ -249,6 +256,9 @@ func (c *cluster) GetNode(nodeName string) (Node, error) {
 }
 
 func (c *cluster) GetHrwNode(key string) (Node, error) {
+    defer c.nodesMutex.Unlock()
+    c.nodesMutex.Lock()
+
     if len(c.nodes) == 0 {
         return nil, errors.New("No nodes")
     }
@@ -265,6 +275,9 @@ func (c *cluster) GetHrwNode(key string) (Node, error) {
 }
 
 func (c *cluster) GetTopHrwNodes(n int, key string) (utils.Set, error) {
+    defer c.nodesMutex.Unlock()
+    c.nodesMutex.Lock()
+    
     if len(c.nodes) == 0 {
         return nil, errors.New("No nodes")
     }
