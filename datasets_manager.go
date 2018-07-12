@@ -22,7 +22,6 @@ const (
 )
 
 type DatasetsManager interface {
-    GetDataset(string) (Dataset, error)
     Run() error
 }
 
@@ -37,8 +36,7 @@ type datasetsManager struct {
     datasetsMutex *sync.RWMutex
     datasetChangesNotifications utils.Broadcast
 
-    localDatasets map[string]utils.Set
-    localDatasetsMutex *sync.RWMutex
+    localDatasets utils.Set
 }
 
 type DatasetsChangedNotification struct {
@@ -58,8 +56,7 @@ func NewDatasetsManager(ctx context.Context, config *Config, zkConn *zk.Conn, cl
         datasetsMutex: &sync.RWMutex{},
         datasetChangesNotifications: utils.NewThreadSafeBroadcast(),
 
-        localDatasets: make(map[string]utils.Set),
-        localDatasetsMutex: &sync.RWMutex{},
+        localDatasets: utils.NewThreadSafeSet(),
     }
     if err := dm.bootstrapZk(); err != nil {
         return nil, err
@@ -90,28 +87,6 @@ func (dm *datasetsManager) deleteDataset(name string) {
     delete(dm.datasets, name)
 }
 
-func (dm *datasetsManager) addLocalDataset(name string, partitions utils.Set) {
-    defer dm.localDatasetsMutex.Unlock()
-    dm.localDatasetsMutex.Lock()
-
-    dm.localDatasets[name] = partitions
-}
-
-func (dm *datasetsManager) getLocalDataset(name string) (utils.Set, bool) {
-    defer dm.localDatasetsMutex.Unlock()
-    dm.localDatasetsMutex.Lock()
-
-    partitions, exists := dm.localDatasets[name]
-    return partitions, exists
-}
-
-func (dm *datasetsManager) deleteLocalDataset(name string) {
-    defer dm.localDatasetsMutex.RUnlock()
-    dm.localDatasetsMutex.RLock()
-
-    delete(dm.localDatasets, name)
-}
-
 func (dm *datasetsManager) bootstrapZk() error {
     paths := []string{
         dm.zkDatasetsPath(),
@@ -130,18 +105,23 @@ func (dm *datasetsManager) bootstrapZk() error {
 }
 
 func (dm *datasetsManager) bootstrapLocalDatasets() error {
-    datasetsWithPartitions, err := dm.ListDatasetsWithPartitions()
+    datasetsWithPartitions, err := dm.listDatasetsWithPartitions()
     if err != nil {
         return err
     }
 
     wg := &sync.WaitGroup{}
-    for dataset, partitions := range datasetsWithPartitions {
+    for datasetName, partitions := range datasetsWithPartitions {
+        datasetData, err := dm.getDatasetData(datasetName)
+        if err != nil {
+            return err
+        }
+        dataset := newDatasetFromProto(datasetData, dm.zk, dm.storage)
         dm.addDataset(dataset)
 
         ownedPartitions := utils.NewSet()
-        for partitionId := range partitions.ToIterator() {
-            shouldOwn, err := dm.shouldOwn(dataset, partitionId.(string))
+        for _, partitionId := range partitions {
+            shouldOwn, err := dm.shouldOwn(dataset, partitionId)
             if err != nil {
                 return err
             }
@@ -149,11 +129,14 @@ func (dm *datasetsManager) bootstrapLocalDatasets() error {
                 ownedPartitions.Add(partitionId)
             }
         }
+
         if ownedPartitions.Len() > 0 {
+            dm.localDatasets.Add(dataset.Meta().GetName())
+
             wg.Add(1)
             go func(dataset Dataset, partitions utils.Set) {
                 defer wg.Done()
-                dm.buildDatasetPartitions(dataset, partitions)
+                dataset.BuildPartitions(partitions)
             }(dataset, ownedPartitions)
         }
     }
@@ -197,10 +180,11 @@ func (dm *datasetsManager) updateDatasets(datasets []string) error {
         updatedDatasets.Add(datasetName)
 
         if _, exists := dm.getDataset(datasetName); !exists {
-            dataset, err := dm.GetDataset(datasetName)
+            datasetData, err := dm.getDatasetData(datasetName)
             if err != nil {
                 return err
             }
+            dataset := newDatasetFromProto(datasetData, dm.zk, dm.storage)
             dm.addDataset(dataset)
 
             dm.datasetChangesNotifications.Send(&DatasetsChangedNotification{
@@ -262,8 +246,8 @@ func (dm *datasetsManager) datasetCreated(dataset Dataset) {
     }
 
     ownedPartitions := utils.NewSet()
-    for partitionId := range partitions.ToIterator() {
-        shouldOwn, err := dm.shouldOwn(dataset, partitionId.(string))
+    for _, partitionId := range partitions {
+        shouldOwn, err := dm.shouldOwn(dataset, partitionId)
         if err != nil {
             panic(err)
         }
@@ -271,23 +255,29 @@ func (dm *datasetsManager) datasetCreated(dataset Dataset) {
             ownedPartitions.Add(partitionId)
         }
     }
+    
     if ownedPartitions.Len() > 0 {
-        dm.buildDatasetPartitions(dataset, ownedPartitions)
+        dm.localDatasets.Add(dataset.Meta().GetName())
+        dataset.BuildPartitions(ownedPartitions)
     }
 }
 
 func (dm *datasetsManager) datasetDeleted(dataset Dataset) {
-    if _, exists := dm.getLocalDataset(dataset.Meta().GetName()); exists {
+    if dm.localDatasets.Contains(dataset.Meta().GetName()) {
         log.Infof("Delete local: %s", dataset.Meta().GetName())
-        dm.deleteLocalDataset(dataset.Meta().GetName())
+        dm.localDatasets.Remove(dataset.Meta().GetName())
     }
 }
 
 func (dm *datasetsManager) nodeCreated(node Node) {
-    for datasetName, partitions := range dm.localDatasets {
+    for _, datasetName := range dm.localDatasets.ToSlice() {
+        dataset, exists := dm.getDataset(datasetName.(string))
+        if !exists {
+            panic("Dataset does not exists")
+        }
+
         releasedPartitions := utils.NewSet()
-        for partitionId := range partitions.ToIterator() {
-            dataset, _ := dm.getDataset(datasetName)
+        for _, partitionId := range dataset.LocalPartitions() {
             shouldOwn, err := dm.shouldOwn(dataset, partitionId.(string))
             if err != nil {
                 panic(err)
@@ -296,52 +286,42 @@ func (dm *datasetsManager) nodeCreated(node Node) {
                 releasedPartitions.Add(partitionId)
             }
         }
+
         if releasedPartitions.Len() > 0 {
-            dm.releaseDatasetPartitions(datasetName, releasedPartitions)
+            dataset.DeletePartitions(releasedPartitions)
         }
     }
 }
 
 func (dm *datasetsManager) nodeDeleted(node Node) {
     // :TODO: Check only datasets previously owned by the deleted node
-    datasetsWithPartitions, err := dm.ListDatasetsWithPartitions()
+    datasetsWithPartitions, err := dm.listDatasetsWithPartitions()
     if err != nil {
         panic(err)
     }
 
-    for dataset, partitions := range datasetsWithPartitions {
+    for datasetName, partitions := range datasetsWithPartitions {
+        dataset, exists := dm.getDataset(datasetName)
+        if !exists {
+            panic("Dataset does not exists")
+        }
+
         ownedPartitions := utils.NewSet()
-        for partitionId := range partitions.ToIterator() {
-            shouldOwn, err := dm.shouldOwn(dataset, partitionId.(string))
+        for _, partitionId := range partitions {
+            shouldOwn, err := dm.shouldOwn(dataset, partitionId)
             if err != nil {
                 panic(err)
             }
             if shouldOwn {
                 ownedPartitions.Add(partitionId)
-            }
+            }  
         }
+
         if ownedPartitions.Len() > 0 {
-            dm.buildDatasetPartitions(dataset, ownedPartitions)
+            dm.localDatasets.Add(dataset.Meta().GetName())
+            dataset.BuildPartitions(ownedPartitions)
         }
     }
-}
-
-func (dm *datasetsManager) buildDatasetPartitions(dataset Dataset, partitions utils.Set) {
-    existingPartitions, exists := dm.getLocalDataset(dataset.Meta().GetName())
-    if !exists {
-        dm.addLocalDataset(dataset.Meta().GetName(), partitions)
-        log.Infof("Own dataset: %s, partitions: %s", dataset.Meta().GetName(), partitions)
-    } else {
-        dm.addLocalDataset(dataset.Meta().GetName(), existingPartitions.Union(partitions))
-        log.Infof("Own dataset: %s, partitions: %s, new partitions: %s", dataset.Meta().GetName(), existingPartitions.Union(partitions), partitions.Difference(existingPartitions))
-    }
-}
-
-func (dm *datasetsManager) releaseDatasetPartitions(datasetName string, partitions utils.Set) {
-    existingPartitions, _ := dm.getLocalDataset(datasetName)
-    dm.addLocalDataset(datasetName, existingPartitions.Difference(partitions))
-
-    log.Infof("Release dataset: %s, partitions: %s, released partitions: %s", datasetName, existingPartitions.Difference(partitions), partitions)
 }
 
 func (dm *datasetsManager) shouldOwn(dataset Dataset, partitionId string) (bool, error) {
@@ -352,29 +332,8 @@ func (dm *datasetsManager) shouldOwn(dataset Dataset, partitionId string) (bool,
 
     return nodes.Contains(dm.cluster.Uuid()), nil
 }
- 
-func (dm *datasetsManager) ListDatasetsWithPartitions() (map[Dataset]utils.Set, error) {
-    datasets, _, err := dm.zk.Children(dm.zkDatasetsPath())
-    if err != nil {
-        return nil, err
-    }
 
-    result := make(map[Dataset]utils.Set)
-    for _, datasetName := range datasets {
-        dataset, err := dm.GetDataset(datasetName)
-        if err != nil {
-            return nil, err
-        }
-        partitions, err := dm.listDatasetPartitions(datasetName)
-        if err != nil {
-            return nil, err
-        }
-        result[dataset] = partitions
-    }
-    return result, nil
-}
-
-func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
+func (dm *datasetsManager) getDatasetData(name string) (*pb.Dataset, error) {
     zkPath := filepath.Join(dm.zkDatasetsPath(), name)
     datasetData, _, err := dm.zk.Get(zkPath)
     if err != nil {
@@ -387,20 +346,33 @@ func (dm *datasetsManager) GetDataset(name string) (Dataset, error) {
     }
     datasetMeta.ZkPath = zkPath
 
-    return newDatasetFromProto(datasetMeta, dm.storage), nil
+    return datasetMeta, nil
+}
+ 
+func (dm *datasetsManager) listDatasetsWithPartitions() (map[string][]string, error) {
+    datasets, _, err := dm.zk.Children(dm.zkDatasetsPath())
+    if err != nil {
+        return nil, err
+    }
+
+    result := make(map[string][]string)
+    for _, datasetName := range datasets {
+        partitions, err := dm.listDatasetPartitions(datasetName)
+        if err != nil {
+            return nil, err
+        }
+        result[datasetName] = partitions
+    }
+    return result, nil
 }
 
-func (dm *datasetsManager) listDatasetPartitions(name string) (utils.Set, error) {
+func (dm *datasetsManager) listDatasetPartitions(name string) ([]string, error) {
     partitions, _, err := dm.zk.Children(filepath.Join(dm.zkDatasetsPath(), name, "partitions"))
     if err != nil {
         return nil, err
     }
 
-    result := utils.NewSet()
-    for _, partition := range partitions {
-        result.Add(partition)
-    }
-    return result, nil
+    return partitions, nil
 }
 
 func (dm *datasetsManager) zkDatasetsPath() string {
