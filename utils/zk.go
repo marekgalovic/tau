@@ -35,9 +35,10 @@ func ZkCreatePath(zkConn *zk.Conn, path string, data []byte, flags int32, acl []
             continue
         }
 
-        request := &zk.CreateRequest{Path: partialPath, Data: nil, Flags: flags, Acl: acl}
+        request := &zk.CreateRequest{Path: partialPath, Data: nil, Flags: int32(0), Acl: acl}
         if i == len(pathParts){
             request.Data = data
+            request.Flags = flags
         }
         requests = append(requests, request)
     }

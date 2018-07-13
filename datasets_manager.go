@@ -116,7 +116,7 @@ func (dm *datasetsManager) bootstrapLocalDatasets() error {
         if err != nil {
             return err
         }
-        dataset := newDatasetFromProto(datasetData, dm.zk, dm.storage)
+        dataset := newDatasetFromProto(datasetData, dm.ctx, dm.config, dm.zk, dm.storage)
         dm.addDataset(dataset)
 
         ownedPartitions := utils.NewSet()
@@ -184,7 +184,7 @@ func (dm *datasetsManager) updateDatasets(datasets []string) error {
             if err != nil {
                 return err
             }
-            dataset := newDatasetFromProto(datasetData, dm.zk, dm.storage)
+            dataset := newDatasetFromProto(datasetData, dm.ctx, dm.config, dm.zk, dm.storage)
             dm.addDataset(dataset)
 
             dm.datasetChangesNotifications.Send(&DatasetsChangedNotification{
