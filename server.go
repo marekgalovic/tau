@@ -4,9 +4,10 @@ import (
     "net";
 
     "github.com/marekgalovic/tau/storage";
+    "github.com/marekgalovic/tau/dataset";
     pb "github.com/marekgalovic/tau/protobuf";
+    "github.com/marekgalovic/tau/utils";
 
-    "github.com/samuel/go-zookeeper/zk";
     "google.golang.org/grpc"
 )
 
@@ -20,15 +21,15 @@ type server struct {
     grpcServer *grpc.Server
     
     config *Config
-    zk *zk.Conn
-    datasetsManager DatasetsManager
+    zk utils.Zookeeper
+    datasetsManager dataset.Manager
     storage storage.Storage
 }
 
-func NewServer(config *Config, zkConn *zk.Conn, datasetsManager DatasetsManager, storage storage.Storage) Server {
+func NewServer(config *Config, zk utils.Zookeeper, datasetsManager dataset.Manager, storage storage.Storage) Server {
     s := &server{
         config: config,
-        zk: zkConn,
+        zk: zk,
         datasetsManager: datasetsManager,
         storage: storage,
     }

@@ -1,15 +1,15 @@
 package tau
 
 import (
-    // "github.com/marekgalovic/tau/math";
+    "github.com/marekgalovic/tau/dataset";
     pb "github.com/marekgalovic/tau/protobuf";
 )
 
 type searchService struct {
-    datasetsManager DatasetsManager
+    datasetsManager dataset.Manager
 }
 
-func newSearchService(datasetsManager DatasetsManager) *searchService {
+func newSearchService(datasetsManager dataset.Manager) *searchService {
     return &searchService{
         datasetsManager: datasetsManager,
     }

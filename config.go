@@ -4,22 +4,20 @@ import (
     "os"
     "fmt";
     "flag";
+    "time";
+
+    "github.com/marekgalovic/tau/utils";
 )
 
 type Config struct {
     IndexPath string
     Server ServerConfig
-    Zookeeper ZookeeperConfig
+    Zookeeper utils.ZookeeperConfig
 }
 
 type ServerConfig struct {
     Address string
     Port string
-}
-
-type ZookeeperConfig struct {
-    Nodes []string
-    BasePath string
 }
 
 func NewConfig() *Config {
@@ -29,8 +27,9 @@ func NewConfig() *Config {
             Address: "",
             Port: "5555",
         },
-        Zookeeper: ZookeeperConfig {
+        Zookeeper: utils.ZookeeperConfig {
             Nodes: []string{"127.0.0.1:2181"},
+            Timeout: 4 * time.Second,
             BasePath: "/tau",
         },
     }

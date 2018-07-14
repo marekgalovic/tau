@@ -91,5 +91,9 @@ func (s *localStorage) Reader(path string) (io.ReadCloser, error) {
 }
 
 func (s *localStorage) Writer(path string) (io.WriteCloser, error) {
+    if err := os.MkdirAll(filepath.Dir(path), os.ModeDir); err != nil {
+        return nil, err
+    }
+
     return os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0755)
 }
