@@ -11,6 +11,7 @@ import (
     "errors";
 
     "github.com/samuel/go-zookeeper/zk";
+    log "github.com/Sirupsen/logrus";
 )
 
 var SeqIdRegexp = regexp.MustCompile(`\-n(\d+)`)
@@ -249,20 +250,21 @@ func (z *zookeeper) Multi(requests ...interface{}) error {
     requestsWithBasePath := make([]interface{}, len(requests))
 
     for i, request := range requests {
+        log.Info(request)
         switch request.(type) {
-        case zk.CreateRequest:
+        case *zk.CreateRequest:
             r := request.(*zk.CreateRequest)
             r.Path = z.withBasePath(r.Path)
             requestsWithBasePath[i] = r
-        case zk.DeleteRequest:
+        case *zk.DeleteRequest:
             r := request.(*zk.DeleteRequest)
             r.Path = z.withBasePath(r.Path)
             requestsWithBasePath[i] = r
-        case zk.SetDataRequest:
+        case *zk.SetDataRequest:
             r := request.(*zk.SetDataRequest)
             r.Path = z.withBasePath(r.Path)
             requestsWithBasePath[i] = r
-        case zk.CheckVersionRequest:
+        case *zk.CheckVersionRequest:
             r := request.(*zk.CheckVersionRequest)
             r.Path = z.withBasePath(r.Path)
             requestsWithBasePath[i] = r

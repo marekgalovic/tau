@@ -29,7 +29,9 @@ func main() {
 
     printDatasets(client)
 
-    name := "dataset2"
+    log.Info(client.DeleteDataset("dataset3"))
+
+    name := "dataset3"
     d := &pb.Dataset {
         Name: name,
         // Path: "./examples/data/random_*",
@@ -54,11 +56,13 @@ func main() {
         &pb.DatasetPartition{Id: 4, Files: []string{"./examples/data/random_normal.csv"}},
         &pb.DatasetPartition{Id: 5, Files: []string{"./examples/data/random_normal.csv"}},
     }
-    if err := client.CreateDatasetWithPartitions(d, p); err != nil {
-        log.Fatal(err)
-    }
 
-    printDatasets(client)
+    log.Info(p, d)
+    // if err := client.CreateDatasetWithPartitions(d, p); err != nil {
+    //     log.Fatal(err)
+    // }
+
+    // printDatasets(client)
 
 
     // for i := 0; i < 100; i++ {

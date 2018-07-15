@@ -3,12 +3,13 @@ package dataset
 import (
     "context";
     "sync";
+    "path/filepath";
 
-    "github.com/marekgalovic/tau/index";
     "github.com/marekgalovic/tau/storage";
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/utils";
 
+    "github.com/golang/protobuf/proto";
     log "github.com/Sirupsen/logrus";
 )
 
@@ -26,9 +27,10 @@ type dataset struct {
     zk utils.Zookeeper
     storage storage.Storage
 
-    partitions utils.Set
-    partitionIndices map[string]index.Index
-    partitionIndicesMutex *sync.Mutex
+    partitions map[string]Partition
+    partitionsMutex *sync.Mutex
+
+    localPartitions utils.Set
 }
 
 func newDatasetFromProto(meta *pb.Dataset, ctx context.Context, zk utils.Zookeeper, storage storage.Storage) Dataset {
@@ -37,7 +39,9 @@ func newDatasetFromProto(meta *pb.Dataset, ctx context.Context, zk utils.Zookeep
         meta: meta,
         zk: zk,
         storage: storage,
-        partitions: utils.NewThreadSafeSet(),
+        partitions: make(map[string]Partition),
+        partitionsMutex: &sync.Mutex{},
+        localPartitions: utils.NewThreadSafeSet(),
     }
 }
 
@@ -46,15 +50,15 @@ func (d *dataset) Meta() *pb.Dataset {
 }
 
 func (d *dataset) LocalPartitions() []interface{} {
-    return d.partitions.ToSlice()
+    return d.localPartitions.ToSlice()
 } 
 
 func (d *dataset) BuildPartitions(updatedPartitions utils.Set) error {
-    newPartitions := updatedPartitions.Difference(d.partitions)
+    newPartitions := updatedPartitions.Difference(d.localPartitions)
     if newPartitions.Len() == 0 {
         return nil    
     }
-    d.partitions = d.partitions.Union(updatedPartitions)
+    d.localPartitions = d.localPartitions.Union(updatedPartitions)
 
     for _, partitionId := range newPartitions.ToSlice() {
         go d.loadPartition(partitionId.(string))   
@@ -64,7 +68,7 @@ func (d *dataset) BuildPartitions(updatedPartitions utils.Set) error {
 }
 
 func (d *dataset) DeletePartitions(deletedPartitions utils.Set) error {
-    d.partitions = d.partitions.Difference(deletedPartitions)
+    d.localPartitions = d.localPartitions.Difference(deletedPartitions)
 
     for _, partitionId := range deletedPartitions.ToSlice() {
         go d.unloadPartition(partitionId.(string))
@@ -74,7 +78,7 @@ func (d *dataset) DeletePartitions(deletedPartitions utils.Set) error {
 }
 
 func (d *dataset) DeleteAllPartitions() error {
-    for _, partitionId := range d.partitions.ToSlice() {
+    for _, partitionId := range d.localPartitions.ToSlice() {
         go d.unloadPartition(partitionId.(string))
     }
 
@@ -82,90 +86,65 @@ func (d *dataset) DeleteAllPartitions() error {
 }
 
 func (d *dataset) loadPartition(partitionId string) {
+    partitionMeta, err := d.getPartitionData(partitionId)
+    if err != nil {
+        panic(err)
+    }
+
+    partition := newPartitionFromProto(d.Meta(), partitionMeta, d.ctx, d.zk, d.storage)
+    if err := partition.Load(); err != nil {
+        panic(err)
+    }
+
     log.Infof("Dataset: `%s`, load partition: %s", d.Meta().GetName(), partitionId)
+    d.addPartition(partitionId, partition)
 }
 
 func (d *dataset) unloadPartition(partitionId string) {
+    partition, exists := d.getPartition(partitionId)
+    if !exists {
+        panic("Partition does not exists")
+    }
+
     log.Infof("Dataset: `%s`, unload partition: %s", d.Meta().GetName(), partitionId)
+    d.deletePartition(partitionId)
+    if err := partition.Unload(); err != nil {
+        panic(err)
+    }
 }
 
-// func (d *dataset) loadPartition(partitionId string) {
-//     log.Infof("Dataset `%s` load partition: %s", d.Meta().GetName(), partitionId)
+func (d *dataset) getPartitionData(partitionId string) (*pb.DatasetPartition, error) {
+    partitionData, err := d.zk.Get(filepath.Join(ZkDatasetsPath, d.Meta().GetName(), "partitions", partitionId))
+    if err != nil {
+        return nil, err
+    }
 
-//     LOAD_INDEX:
-//     indexExists, err := d.storage.Exists(d.partitionIndexPath(partitionId))
-//     if err != nil {
-//         panic(err)
-//     }
-//     if indexExists {
-//         log.Info("Load index file")
-//         indexFile, err := d.storage.Reader(d.partitionIndexPath(partitionId))
-//         if err != nil {
-//             panic(err)
-//         }
-//         defer indexFile.Close()
+    partitionMeta := &pb.DatasetPartition{}
+    if err := proto.Unmarshal(partitionData, partitionMeta); err != nil {
+        return nil, err
+    }
 
-//         partitionIndex := index.FromProto(d.index)
-//         if err := partitionIndex.Load(indexFile); err != nil {
-//             panic(err)
-//         }
+    return partitionMeta, nil
+}
 
-//         d.partitionIndicesMutex.Lock()
-//         d.partitionIndices[partitionId] = partitionIndex
-//         d.partitionIndicesMutex.Unlock()
-//         return
-//     }
+func (d *dataset) getPartition(partitionId string) (Partition, bool) {
+    defer d.partitionsMutex.Unlock()
+    d.partitionsMutex.Lock()
 
-//     buildLockExists, _, err := d.zk.Exists(d.zkPartitionBuildLockPath(partitionId))
-//     if err != nil {
-//         panic(err)
-//     }
+    partition, exists := d.partitions[partitionId]
+    return partition, exists
+}
 
-//     if buildLockExists {
-//         log.Info("Wait for node to build partition index")
-//         for {
-//             _, _, event, err := d.zk.ExistsW(d.zkPartitionBuildLockPath(partitionId))
-//             if err != nil {
-//                 panic(err)
-//             }
+func (d *dataset) addPartition(partitionId string, partition Partition) {
+    defer d.partitionsMutex.Unlock()
+    d.partitionsMutex.Lock()
 
-//             select {
-//             case e := <- event:
-//                 if e.Type == zk.EventNodeDeleted {
-//                     log.Info("Build partition lock released")
-//                     goto LOAD_INDEX
-//                 }
-//                 continue
-//             case <- d.ctx.Done():
-//                 return
-//             }
-//         }
-//     }
+    d.partitions[partitionId] = partition   
+}
 
-//     if err := utils.ZkCreatePath(d.zk, d.zkPartitionBuildLockPath(partitionId), nil, zk.FlagEphemeral, zk.WorldACL(zk.PermAll)); err != nil {
-//         panic(err)
-//     }
-//     defer func() {
-//         if err := d.zk.Delete(d.zkPartitionBuildLockPath(partitionId), -1); err != nil {
-//             panic(err)
-//         }
-//     }()
+func (d *dataset) deletePartition(partitionId string) {
+    defer d.partitionsMutex.Unlock()
+    d.partitionsMutex.Lock()
 
-//     log.Infof("Dataset `%s` build index for partition: %s", d.Meta().GetName(), partitionId)
-//     partitionIndex := index.FromProto(d.index)
-//     <- time.After(10 * time.Second)  // Populate/build
-
-//     indexFile, err := d.storage.Writer(d.partitionIndexPath(partitionId))
-//     if err != nil {
-//         panic(err)
-//     }
-//     defer indexFile.Close()
-    
-//     if err := partitionIndex.Save(indexFile); err != nil {
-//         panic(err)
-//     }
-
-//     d.partitionIndicesMutex.Lock()
-//     d.partitionIndices[partitionId] = partitionIndex
-//     d.partitionIndicesMutex.Unlock()
-// }
+    delete(d.partitions, partitionId)
+}
