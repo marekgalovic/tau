@@ -6,12 +6,13 @@ import (
     "flag";
     "time";
 
+    "github.com/marekgalovic/tau/dataset";
     "github.com/marekgalovic/tau/utils";
 )
 
 type Config struct {
-    IndexPath string
     Server ServerConfig
+    Dataset dataset.DatasetManagerConfig
     Zookeeper utils.ZookeeperConfig
 }
 
@@ -22,10 +23,12 @@ type ServerConfig struct {
 
 func NewConfig() *Config {
     c := &Config {
-        IndexPath: "/tmp",
         Server: ServerConfig {
             Address: "",
             Port: "5555",
+        },
+        Dataset: dataset.DatasetManagerConfig {
+            IndicesPath: "/tmp",
         },
         Zookeeper: utils.ZookeeperConfig {
             Nodes: []string{"127.0.0.1:2181"},
@@ -42,7 +45,7 @@ func (c *Config) parseFlags() {
     flagSet := flag.NewFlagSet("Tau Server", flag.ExitOnError)
     flagSet.StringVar(&c.Server.Address, "address", c.Server.Address, "Server address")
     flagSet.StringVar(&c.Server.Port, "port", c.Server.Port, "Server port")
-    flagSet.StringVar(&c.IndexPath, "index-path", c.IndexPath, "Index path")
+    flagSet.StringVar(&c.Dataset.IndicesPath, "indices-path", c.Dataset.IndicesPath, "Index path")
     flagSet.Parse(os.Args[1:])
 }
 

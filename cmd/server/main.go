@@ -27,7 +27,7 @@ func main() {
     defer cluster.Close()
 
     lStorage := storage.NewLocal()
-    datasetsManager, err := dataset.NewManager(zookeeper, cluster, lStorage)
+    datasetsManager, err := dataset.NewManager(config.Dataset, zookeeper, cluster, lStorage)
     if err != nil {
         log.Fatal(err)
     }

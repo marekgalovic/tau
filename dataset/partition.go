@@ -4,13 +4,16 @@ import (
     "fmt";
     "context";
     "crypto/sha256";
+    "path/filepath";
+    "time";
 
     "github.com/marekgalovic/tau/index";
     "github.com/marekgalovic/tau/storage";
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/utils";
 
-    log "github.com/Sirupsen/logrus"
+    "github.com/samuel/go-zookeeper/zk";
+    log "github.com/Sirupsen/logrus";
 )
 
 type Partition interface {
@@ -23,16 +26,22 @@ type partition struct {
     datasetMeta *pb.Dataset
     meta *pb.DatasetPartition
     ctx context.Context
+    cancel context.CancelFunc
+    config DatasetManagerConfig
     zk utils.Zookeeper
     storage storage.Storage
     index index.Index
 }
 
-func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, ctx context.Context, zk utils.Zookeeper, storage storage.Storage) Partition {
+func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, ctx context.Context, config DatasetManagerConfig, zk utils.Zookeeper, storage storage.Storage) Partition {
+    ctx, cancel := context.WithCancel(ctx)
+
     return &partition {
         datasetMeta: datasetMeta,
         meta: meta,
         ctx: ctx,
+        cancel: cancel,
+        config: config,
         zk: zk,
         storage: storage,
         index: index.FromProto(datasetMeta.GetIndex()),
@@ -44,12 +53,97 @@ func (p *partition) Meta() *pb.DatasetPartition {
 }
 
 func (p *partition) Load() error {
-    log.Infof("load index file: %s", p.indexFilename())
-    return nil
+    log.Infof("Load: dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+    LOAD_INDEX:
+    indexExists, err := p.storage.Exists(p.indexPath())
+    if err != nil {
+        return err
+    }
+
+    if indexExists {
+        return p.loadIndex() 
+    }
+
+    buildLockExists, err := p.zk.Exists(p.zkBuildLockPath())
+    if err != nil {
+        return err
+    }
+
+    if buildLockExists {
+        log.Infof("Wait for index - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+        for {
+            _, event, err := p.zk.ExistsW(p.zkBuildLockPath())
+            if err != nil {
+                return err
+            }
+
+            select {
+            case e := <-event:
+                if e.Type == zk.EventNodeDeleted {
+                    goto LOAD_INDEX
+                }
+                continue
+            case <-p.ctx.Done():
+                return nil
+            }
+        }
+    }
+
+    return p.buildIndex()
 }
 
 func (p *partition) Unload() error {
+    log.Infof("Unload: dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+    p.cancel()
+    p.index = nil
     return nil
+}
+
+func (p *partition) loadIndex() error {
+    log.Infof("Load index - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+    indexFile, err := p.storage.Reader(p.indexPath())
+    if err != nil {
+        return err
+    }
+    defer indexFile.Close()
+
+    if err := p.index.Load(indexFile); err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func (p *partition) buildIndex() error {
+    log.Infof("Build index - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+    if _, err := p.zk.CreatePath(p.zkBuildLockPath(), nil, zk.FlagEphemeral); err != nil {
+        return err
+    }
+    defer p.zk.Delete(p.zkBuildLockPath())
+
+    select {
+    case <- time.After(10 * time.Second):  // Populate/build
+        log.Infof("Index build done - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+    case <- p.ctx.Done():
+        log.Infof("Cancel index build - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+        return nil
+    }
+
+    indexFile, err := p.storage.Writer(p.indexPath())
+    if err != nil {
+        return err
+    }
+    defer indexFile.Close()
+    
+    if err := p.index.Save(indexFile); err != nil {
+        return err
+    }
+
+    return nil
+}
+
+func (p *partition) indexPath() string {
+    return filepath.Join(p.config.IndicesPath, p.indexFilename())
 }
 
 func (p *partition) indexFilename() string {
@@ -58,83 +152,6 @@ func (p *partition) indexFilename() string {
     return fmt.Sprintf("%x.ti", hash)
 }
 
-// func (d *dataset) loadPartition(partitionId string) {
-//     log.Infof("Dataset `%s` load partition: %s", d.Meta().GetName(), partitionId)
-
-//     LOAD_INDEX:
-//     indexExists, err := d.storage.Exists(d.partitionIndexPath(partitionId))
-//     if err != nil {
-//         panic(err)
-//     }
-//     if indexExists {
-//         log.Info("Load index file")
-//         indexFile, err := d.storage.Reader(d.partitionIndexPath(partitionId))
-//         if err != nil {
-//             panic(err)
-//         }
-//         defer indexFile.Close()
-
-//         partitionIndex := index.FromProto(d.index)
-//         if err := partitionIndex.Load(indexFile); err != nil {
-//             panic(err)
-//         }
-
-//         d.partitionIndicesMutex.Lock()
-//         d.partitionIndices[partitionId] = partitionIndex
-//         d.partitionIndicesMutex.Unlock()
-//         return
-//     }
-
-//     buildLockExists, _, err := d.zk.Exists(d.zkPartitionBuildLockPath(partitionId))
-//     if err != nil {
-//         panic(err)
-//     }
-
-//     if buildLockExists {
-//         log.Info("Wait for node to build partition index")
-//         for {
-//             _, _, event, err := d.zk.ExistsW(d.zkPartitionBuildLockPath(partitionId))
-//             if err != nil {
-//                 panic(err)
-//             }
-
-//             select {
-//             case e := <- event:
-//                 if e.Type == zk.EventNodeDeleted {
-//                     log.Info("Build partition lock released")
-//                     goto LOAD_INDEX
-//                 }
-//                 continue
-//             case <- d.ctx.Done():
-//                 return
-//             }
-//         }
-//     }
-
-//     if err := utils.ZkCreatePath(d.zk, d.zkPartitionBuildLockPath(partitionId), nil, zk.FlagEphemeral, zk.WorldACL(zk.PermAll)); err != nil {
-//         panic(err)
-//     }
-//     defer func() {
-//         if err := d.zk.Delete(d.zkPartitionBuildLockPath(partitionId), -1); err != nil {
-//             panic(err)
-//         }
-//     }()
-
-//     log.Infof("Dataset `%s` build index for partition: %s", d.Meta().GetName(), partitionId)
-//     partitionIndex := index.FromProto(d.index)
-//     <- time.After(10 * time.Second)  // Populate/build
-
-//     indexFile, err := d.storage.Writer(d.partitionIndexPath(partitionId))
-//     if err != nil {
-//         panic(err)
-//     }
-//     defer indexFile.Close()
-    
-//     if err := partitionIndex.Save(indexFile); err != nil {
-//         panic(err)
-//     }
-
-//     d.partitionIndicesMutex.Lock()
-//     d.partitionIndices[partitionId] = partitionIndex
-//     d.partitionIndicesMutex.Unlock()
-// }
+func (p *partition) zkBuildLockPath() string {
+    return filepath.Join(ZkDatasetsPath, p.datasetMeta.GetName(), "partition_build_locks", fmt.Sprintf("%d", p.Meta().GetId()))
+}

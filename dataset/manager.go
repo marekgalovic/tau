@@ -29,6 +29,10 @@ type DatasetsChangedNotification struct {
     Dataset Dataset
 }
 
+type DatasetManagerConfig struct {
+    IndicesPath string
+}
+
 type Manager interface {
     Run()
 }
@@ -36,6 +40,7 @@ type Manager interface {
 type manager struct {
     ctx context.Context
     cancel context.CancelFunc
+    config DatasetManagerConfig
     zk utils.Zookeeper
     cluster cluster.Cluster
     storage storage.Storage
@@ -47,12 +52,13 @@ type manager struct {
     localDatasets utils.Set
 }
 
-func NewManager(zk utils.Zookeeper, cluster cluster.Cluster, storage storage.Storage) (Manager, error) {
+func NewManager(config DatasetManagerConfig, zk utils.Zookeeper, cluster cluster.Cluster, storage storage.Storage) (Manager, error) {
     ctx, cancel := context.WithCancel(context.Background())
 
     m := &manager {
         ctx: ctx,
         cancel: cancel,
+        config: config,
         zk: zk,
         cluster: cluster,
         storage: storage,
@@ -122,7 +128,7 @@ func (m *manager) watchDatasets() {
                 if err != nil {
                     panic(err)
                 }
-                dataset := newDatasetFromProto(datasetData, m.ctx, m.zk, m.storage)
+                dataset := newDatasetFromProto(datasetData, m.ctx, m.config, m.zk, m.storage)
 
                 m.addDataset(dataset)
                 m.datasetChangesNotifications.Send(&DatasetsChangedNotification {

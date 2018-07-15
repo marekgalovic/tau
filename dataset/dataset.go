@@ -10,7 +10,7 @@ import (
     "github.com/marekgalovic/tau/utils";
 
     "github.com/golang/protobuf/proto";
-    log "github.com/Sirupsen/logrus";
+    // log "github.com/Sirupsen/logrus";
 )
 
 type Dataset interface {
@@ -23,6 +23,7 @@ type Dataset interface {
 
 type dataset struct {
     ctx context.Context
+    config DatasetManagerConfig
     meta *pb.Dataset
     zk utils.Zookeeper
     storage storage.Storage
@@ -33,9 +34,10 @@ type dataset struct {
     localPartitions utils.Set
 }
 
-func newDatasetFromProto(meta *pb.Dataset, ctx context.Context, zk utils.Zookeeper, storage storage.Storage) Dataset {
+func newDatasetFromProto(meta *pb.Dataset, ctx context.Context, config DatasetManagerConfig, zk utils.Zookeeper, storage storage.Storage) Dataset {
     return &dataset {
         ctx: ctx,
+        config: config,
         meta: meta,
         zk: zk,
         storage: storage,
@@ -91,13 +93,12 @@ func (d *dataset) loadPartition(partitionId string) {
         panic(err)
     }
 
-    partition := newPartitionFromProto(d.Meta(), partitionMeta, d.ctx, d.zk, d.storage)
+    partition := newPartitionFromProto(d.Meta(), partitionMeta, d.ctx, d.config, d.zk, d.storage)
+    d.addPartition(partitionId, partition)
+
     if err := partition.Load(); err != nil {
         panic(err)
     }
-
-    log.Infof("Dataset: `%s`, load partition: %s", d.Meta().GetName(), partitionId)
-    d.addPartition(partitionId, partition)
 }
 
 func (d *dataset) unloadPartition(partitionId string) {
@@ -105,9 +106,8 @@ func (d *dataset) unloadPartition(partitionId string) {
     if !exists {
         panic("Partition does not exists")
     }
-
-    log.Infof("Dataset: `%s`, unload partition: %s", d.Meta().GetName(), partitionId)
     d.deletePartition(partitionId)
+    
     if err := partition.Unload(); err != nil {
         panic(err)
     }
