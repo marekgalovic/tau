@@ -34,6 +34,7 @@ type DatasetManagerConfig struct {
 }
 
 type Manager interface {
+    GetDataset(string) (Dataset, bool)
     Run()
 }
 
@@ -94,7 +95,7 @@ func (m *manager) Run() {
     go m.run()
 }
 
-func (m *manager) getDataset(name string) (Dataset, bool) {
+func (m *manager) GetDataset(name string) (Dataset, bool) {
     defer m.datasetsMutex.Unlock()
     m.datasetsMutex.Lock()
 
@@ -128,7 +129,11 @@ func (m *manager) watchDatasets() {
                 if err != nil {
                     panic(err)
                 }
-                dataset := newDatasetFromProto(datasetData, m.ctx, m.config, m.zk, m.storage)
+                dataset, err := newDatasetFromProto(datasetData, m.ctx, m.config, m.zk, m.cluster, m.storage)
+                if err != nil {
+                    panic(err)
+                }
+                
                 log.WithFields(log.Fields{
                     "dataset_name": dataset.Meta().GetName(),
                 }).Info("Dataset created")
@@ -139,7 +144,7 @@ func (m *manager) watchDatasets() {
                     Dataset: dataset,
                 })
             case utils.EventZkNodeDeleted:
-                dataset, _ := m.getDataset(event.ZNode)
+                dataset, _ := m.GetDataset(event.ZNode)
                 log.WithFields(log.Fields{
                     "dataset_name": dataset.Meta().GetName(),
                 }).Info("Dataset deleted")
@@ -192,7 +197,7 @@ func (m *manager) run() {
 
 func (m *manager) nodeCreated(node cluster.Node) {
     for _, datasetName := range m.localDatasets.ToSlice() {
-        dataset, exists := m.getDataset(datasetName.(string))
+        dataset, exists := m.GetDataset(datasetName.(string))
         if !exists {
             panic("Dataset does not exists")
         }
@@ -222,7 +227,7 @@ func (m *manager) nodeDeleted(node cluster.Node) {
     }
 
     for datasetName, partitions := range datasetsWithPartitions {
-        dataset, exists := m.getDataset(datasetName)
+        dataset, exists := m.GetDataset(datasetName)
         if !exists {
             panic("Dataset does not exists")
         }

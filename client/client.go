@@ -12,7 +12,7 @@ import (
 type Client interface {
     Close() error
     // Search
-    Search(int, []float32) error
+    Search(string, int, []float32) ([]*pb.SearchResultItem, error)
     // Datasets
     ListDatasets() ([]*pb.Dataset, error)
     GetDataset(string) (*pb.Dataset, error)
@@ -23,6 +23,7 @@ type Client interface {
 
 type client struct {
     conn *grpc.ClientConn
+    searchService pb.SearchServiceClient
     datasetsService pb.DatasetsServiceClient
 }
 
@@ -34,6 +35,7 @@ func New(serverAddr string, opts ...grpc.DialOption) (Client, error) {
 
     return &client {
         conn: conn,
+        searchService: pb.NewSearchServiceClient(conn),
         datasetsService: pb.NewDatasetsServiceClient(conn),
     }, nil
 }
@@ -42,8 +44,28 @@ func (c *client) Close() error {
     return c.conn.Close()
 }
 
-func (c *client) Search(k int, query []float32) error {
-    return nil
+func (c *client) Search(dataset string, k int, query []float32) ([]*pb.SearchResultItem, error) {
+    stream, err := c.searchService.Search(context.Background(), &pb.SearchRequest{
+        DatasetName: dataset,
+        K: int32(k),
+        Query: query,
+    })
+    if err != nil {
+        return nil, err
+    }
+
+    results := make([]*pb.SearchResultItem, 0)
+    for {
+        item, err := stream.Recv()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, err
+        }
+        results = append(results, item)
+    }
+    return results, nil
 }
 
 func (c *client) ListDatasets() ([]*pb.Dataset, error) {

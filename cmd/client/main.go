@@ -29,7 +29,7 @@ func main() {
 
     printDatasets(client)
 
-    log.Info(client.DeleteDataset("dataset3"))
+    log.Info(client.Search("dataset2", 100, make([]float32, 256)))
 
     name := "dataset3"
     d := &pb.Dataset {

@@ -9,6 +9,7 @@ import (
     "time";
 
     "github.com/marekgalovic/tau/index";
+    "github.com/marekgalovic/tau/cluster";
     "github.com/marekgalovic/tau/storage";
     "github.com/marekgalovic/tau/storage/serde";
     pb "github.com/marekgalovic/tau/protobuf";
@@ -20,6 +21,8 @@ import (
 
 type Partition interface {
     Meta() *pb.DatasetPartition
+    Index() index.Index
+    GetNode() (cluster.Node, error)
     Load() error
     Unload() error
 }
@@ -27,16 +30,20 @@ type Partition interface {
 type partition struct {
     datasetMeta *pb.Dataset
     meta *pb.DatasetPartition
+
     ctx context.Context
     cancel context.CancelFunc
+
     config DatasetManagerConfig
     zk utils.Zookeeper
+    cluster cluster.Cluster
     storage storage.Storage
     index index.Index
+
     log *log.Entry
 }
 
-func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, ctx context.Context, config DatasetManagerConfig, zk utils.Zookeeper, storage storage.Storage) Partition {
+func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, ctx context.Context, config DatasetManagerConfig, zk utils.Zookeeper, cluster cluster.Cluster, storage storage.Storage) Partition {
     ctx, cancel := context.WithCancel(ctx)
 
     return &partition {
@@ -46,6 +53,7 @@ func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, c
         cancel: cancel,
         config: config,
         zk: zk,
+        cluster: cluster,
         storage: storage,
         index: index.FromProto(datasetMeta.GetIndex()),
         log: log.WithFields(log.Fields{
@@ -59,7 +67,19 @@ func (p *partition) Meta() *pb.DatasetPartition {
     return p.meta
 }
 
+func (p *partition) Index() index.Index {
+    return p.index
+}
+
+func (p *partition) GetNode() (cluster.Node, error) {
+    return p.cluster.GetHrwNode(fmt.Sprintf("%s.%d", p.datasetMeta.GetName(), p.Meta().GetId()))
+}
+
 func (p *partition) Load() error {
+    if err := p.populateIndex(); err != nil {
+        return err
+    }
+
     LOAD_INDEX:
     indexExists, err := p.storage.Exists(p.indexPath())
     if err != nil {
@@ -67,7 +87,10 @@ func (p *partition) Load() error {
     }
 
     if indexExists {
-        return p.loadIndex() 
+        if err := p.loadIndex(); err != nil {
+            return err
+        }
+        return p.registerNode()
     }
 
     buildLockExists, err := p.zk.Exists(p.zkBuildLockPath())
@@ -95,21 +118,23 @@ func (p *partition) Load() error {
         }
     }
 
-    return p.buildIndex()
+    if err := p.buildIndex(); err != nil {
+        return err
+    }
+    return p.registerNode()
 }
 
 func (p *partition) Unload() error {
     p.log.Info("Unload partition")
+    if err := p.unregisterNode(); err != nil {
+        return err
+    }
     p.cancel()
     p.index.Reset()
     return nil
 }
 
 func (p *partition) loadIndex() error {
-    if err := p.populateIndex(); err != nil {
-        return err
-    }
-
     p.log.WithFields(log.Fields{
         "index_path": p.indexPath(),
     }).Info("Load index")
@@ -131,10 +156,6 @@ func (p *partition) buildIndex() error {
         return err
     }
     defer p.zk.Delete(p.zkBuildLockPath())
-
-    if err := p.populateIndex(); err != nil {
-        return err
-    }
 
     p.log.Info("Build index")
     start := time.Now()
@@ -187,6 +208,16 @@ func (p *partition) populateIndex() error {
     return nil
 }
 
+func (p *partition) registerNode() error {
+    _, err := p.zk.Create(p.zkNodePath(), nil, zk.FlagEphemeral)
+
+    return err
+}
+
+func (p *partition) unregisterNode() error {
+    return p.zk.Delete(p.zkNodePath())
+}
+
 func (p *partition) indexPath() string {
     return filepath.Join(p.config.IndicesPath, p.indexFilename())
 }
@@ -195,6 +226,14 @@ func (p *partition) indexFilename() string {
     hash := sha256.Sum256([]byte(fmt.Sprintf("%s.%d", p.datasetMeta.GetName(), p.Meta().GetId())))
 
     return fmt.Sprintf("%x.ti", hash)
+}
+
+func (p *partition) zkNodesPath() string {
+    return filepath.Join(ZkDatasetsPath, p.datasetMeta.GetName(), "partitions", fmt.Sprintf("%d", p.Meta().GetId()))
+}
+
+func (p *partition) zkNodePath() string {
+    return filepath.Join(p.zkNodesPath(), p.cluster.Uuid())
 }
 
 func (p *partition) zkBuildLockPath() string {

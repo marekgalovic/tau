@@ -1,4 +1,4 @@
- package index
+package index
 
 import (
     "github.com/marekgalovic/tau/math";

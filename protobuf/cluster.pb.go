@@ -25,6 +25,7 @@ It has these top-level messages:
 	Dataset
 	DatasetPartition
 	SearchRequest
+	SearchPartitionsRequest
 	SearchResultItem
 */
 package tau

@@ -4,6 +4,7 @@ import (
     "context";
     "sync";
     "path/filepath";
+    "time";
 
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/utils";
@@ -239,12 +240,14 @@ func (c *cluster) NodeChanges() <-chan interface{} {
 
 func (c *cluster) dialNode(address string) (*grpc.ClientConn, error) {
     c.connCacheMutex.Lock()
-    if conn, exists := c.connCache[address]; exists {
-        c.connCacheMutex.Unlock()
+    conn, exists := c.connCache[address]
+    c.connCacheMutex.Unlock()
+
+    if exists {
         return conn, nil
     }
 
-    conn, err := grpc.Dial(address, grpc.WithInsecure())
+    conn, err := grpc.DialContext(c.ctx, address, grpc.WithInsecure(), grpc.WithTimeout(2 * time.Second), grpc.WithBlock())
     if err != nil {
         return nil, err
     }
