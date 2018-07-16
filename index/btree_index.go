@@ -65,14 +65,14 @@ func (index *btreeIndex) ToProto() *pb.Index {
 // Build builds the forest.
 // As individual trees are independent of each other they
 // are built in parallel.
-func (index *btreeIndex) Build() {
+func (index *btreeIndex) Build(ctx context.Context) {
     index.trees = make([]*btreeNode, index.numTrees)
     treeChans := make([]chan *btreeNode, index.numTrees)
 
     for t := 0; t < index.numTrees; t++ {
         treeChans[t] = make(chan *btreeNode)
         go func(treeChan chan *btreeNode) {
-            treeChan <- newBtree(index)
+            treeChan <- newBtree(ctx, index)
         }(treeChans[t])
     }
 
@@ -287,7 +287,7 @@ func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx cont
     done <- struct{}{}
 }
 
-func newBtree(index *btreeIndex) *btreeNode {
+func newBtree(ctx context.Context, index *btreeIndex) *btreeNode {
     // Worst O(n) to sample initial points
     pointIds := math.RandomDistinctInts(2, len(index.items))
     var pointA, pointB math.Vector
@@ -303,6 +303,12 @@ func newBtree(index *btreeIndex) *btreeNode {
         }
         pointIds[0]--
         pointIds[1]--
+
+        select {
+        case <-ctx.Done():
+            return nil
+        default:
+        }
     }
     split := math.EquidistantPlane(pointA, pointB)
 
@@ -313,6 +319,12 @@ func newBtree(index *btreeIndex) *btreeNode {
             leftIds = append(leftIds, idx)
         } else {
             rightIds = append(rightIds, idx)
+        }
+
+        select {
+        case <-ctx.Done():
+            return nil
+        default:
         }
     }
 
@@ -345,6 +357,12 @@ func newBtree(index *btreeIndex) *btreeNode {
             }()
         } else {
             args.parent.rightNode = &btreeNode{itemIds: args.rightIds}
+        }
+
+        select {
+        case <-ctx.Done():
+            return nil
+        default:
         }
         
         wg.Wait()

@@ -43,6 +43,7 @@ func main() {
         if err != nil {
             break
         }
+
         vec := make([]tauMath.Float, 256)
         for i, b := range bytes.Fields(lineBytes) {
             f, _ := strconv.ParseFloat(string(b), 64)

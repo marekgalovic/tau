@@ -129,6 +129,9 @@ func (m *manager) watchDatasets() {
                     panic(err)
                 }
                 dataset := newDatasetFromProto(datasetData, m.ctx, m.config, m.zk, m.storage)
+                log.WithFields(log.Fields{
+                    "dataset_name": dataset.Meta().GetName(),
+                }).Info("Dataset created")
 
                 m.addDataset(dataset)
                 m.datasetChangesNotifications.Send(&DatasetsChangedNotification {
@@ -137,6 +140,9 @@ func (m *manager) watchDatasets() {
                 })
             case utils.EventZkNodeDeleted:
                 dataset, _ := m.getDataset(event.ZNode)
+                log.WithFields(log.Fields{
+                    "dataset_name": dataset.Meta().GetName(),
+                }).Info("Dataset deleted")
 
                 m.deleteDataset(event.ZNode)
                 m.datasetChangesNotifications.Send(&DatasetsChangedNotification {
@@ -185,7 +191,6 @@ func (m *manager) run() {
 }
 
 func (m *manager) nodeCreated(node cluster.Node) {
-    log.Infof("DM - node created: `%s`", node.Meta().GetUuid())
     for _, datasetName := range m.localDatasets.ToSlice() {
         dataset, exists := m.getDataset(datasetName.(string))
         if !exists {
@@ -210,7 +215,6 @@ func (m *manager) nodeCreated(node cluster.Node) {
 }
 
 func (m *manager) nodeDeleted(node cluster.Node) {
-    log.Infof("DM - node deleted: `%s`", node.Meta().GetUuid())
     // :TODO: Check only datasets previously owned by the deleted node
     datasetsWithPartitions, err := m.listDatasetsWithPartitions()
     if err != nil {
@@ -242,7 +246,6 @@ func (m *manager) nodeDeleted(node cluster.Node) {
 }
 
 func (m *manager) datasetCreated(dataset Dataset) {
-    log.Infof("DM - dataset created: `%s`", dataset.Meta().GetName())
     partitions, err := m.listDatasetPartitions(dataset.Meta().GetName())
     if err != nil {
         panic(err)
@@ -266,12 +269,13 @@ func (m *manager) datasetCreated(dataset Dataset) {
 }
 
 func (m *manager) datasetDeleted(dataset Dataset) {
-    log.Infof("DM - dataset deleted: `%s`", dataset.Meta().GetName())
     if m.localDatasets.Contains(dataset.Meta().GetName()) {
         if err := dataset.DeleteAllPartitions(); err != nil {
             panic(err)
         }
-        log.Infof("Delete local: %s", dataset.Meta().GetName())
+        log.WithFields(log.Fields{
+            "dataset_name": dataset.Meta().GetName(),
+        }).Info("Delete local")
         m.localDatasets.Remove(dataset.Meta().GetName())
     }
 }

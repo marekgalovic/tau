@@ -2,13 +2,16 @@ package dataset
 
 import (
     "fmt";
+    "io";
     "context";
     "crypto/sha256";
     "path/filepath";
+    "bufio";
     "time";
 
     "github.com/marekgalovic/tau/index";
     "github.com/marekgalovic/tau/storage";
+    "github.com/marekgalovic/tau/storage/serde";
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/utils";
 
@@ -31,6 +34,7 @@ type partition struct {
     zk utils.Zookeeper
     storage storage.Storage
     index index.Index
+    log *log.Entry
 }
 
 func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, ctx context.Context, config DatasetManagerConfig, zk utils.Zookeeper, storage storage.Storage) Partition {
@@ -45,6 +49,10 @@ func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, c
         zk: zk,
         storage: storage,
         index: index.FromProto(datasetMeta.GetIndex()),
+        log: log.WithFields(log.Fields{
+            "dataset_name": datasetMeta.GetName(),
+            "partition_id": meta.GetId(),
+        }),
     }
 }
 
@@ -53,7 +61,6 @@ func (p *partition) Meta() *pb.DatasetPartition {
 }
 
 func (p *partition) Load() error {
-    log.Infof("Load: dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
     LOAD_INDEX:
     indexExists, err := p.storage.Exists(p.indexPath())
     if err != nil {
@@ -70,7 +77,7 @@ func (p *partition) Load() error {
     }
 
     if buildLockExists {
-        log.Infof("Wait for index - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+        p.log.Info("Wait for index")
         for {
             _, event, err := p.zk.ExistsW(p.zkBuildLockPath())
             if err != nil {
@@ -93,14 +100,20 @@ func (p *partition) Load() error {
 }
 
 func (p *partition) Unload() error {
-    log.Infof("Unload: dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+    p.log.Info("Unload partition")
     p.cancel()
     p.index = nil
     return nil
 }
 
 func (p *partition) loadIndex() error {
-    log.Infof("Load index - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
+    if err := p.populateIndex(); err != nil {
+        return err
+    }
+
+    p.log.WithFields(log.Fields{
+        "index_path": p.indexPath(),
+    }).Info("Load index")
     indexFile, err := p.storage.Reader(p.indexPath())
     if err != nil {
         return err
@@ -115,19 +128,19 @@ func (p *partition) loadIndex() error {
 }
 
 func (p *partition) buildIndex() error {
-    log.Infof("Build index - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
     if _, err := p.zk.CreatePath(p.zkBuildLockPath(), nil, zk.FlagEphemeral); err != nil {
         return err
     }
     defer p.zk.Delete(p.zkBuildLockPath())
 
-    select {
-    case <- time.After(10 * time.Second):  // Populate/build
-        log.Infof("Index build done - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
-    case <- p.ctx.Done():
-        log.Infof("Cancel index build - dataset: %s, partition: %d", p.datasetMeta.GetName(), p.meta.GetId())
-        return nil
+    if err := p.populateIndex(); err != nil {
+        return err
     }
+
+    p.log.Info("Build index")
+    start := time.Now()
+    p.index.Build(p.ctx)
+    p.log.Info("Index building done: %s", time.Since(start))
 
     indexFile, err := p.storage.Writer(p.indexPath())
     if err != nil {
@@ -138,6 +151,45 @@ func (p *partition) buildIndex() error {
     if err := p.index.Save(indexFile); err != nil {
         return err
     }
+
+    return nil
+}
+
+func (p *partition) populateIndex() error {
+    p.log.Info("Populate index")
+
+    for _, filePath := range p.Meta().GetFiles() {
+        file, err := p.storage.Reader(filePath)
+        if err != nil {
+            return err
+        }
+        defer file.Close()
+
+        csv := serde.NewCsv("\t")
+        reader := bufio.NewReader(file)
+        for {
+            line, _, err := reader.ReadLine()
+            if err == io.EOF {
+                break
+            }
+            if err != nil {
+                return err
+            }
+
+            id, item, err := csv.DeserializeItem(line)
+            if err != nil {
+                return err
+            }
+            p.index.Add(id, item)
+
+            select {
+            case <- p.ctx.Done():
+                return nil
+            default:
+            }
+        }
+    }
+    p.log.Infof("Index populated. Items: %d", p.index.Len())
 
     return nil
 }

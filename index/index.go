@@ -3,6 +3,7 @@
 import (
     "fmt";
     "io";
+    "context";
     "encoding/binary";
 
     "github.com/marekgalovic/tau/math";
@@ -10,10 +11,11 @@ import (
 )
 
 type Index interface {
-    Build()
+    Build(context.Context)
     Search(math.Vector) SearchResult
     ByteSize() int
     Len() int
+    Size() int
     Items() map[int64]math.Vector
     Add(int64, math.Vector) error
     Get(int64) math.Vector
@@ -43,6 +45,10 @@ func (i *baseIndex) ByteSize() int {
 
 func (i *baseIndex) Len() int {
     return len(i.items)
+}
+
+func (i *baseIndex) Size() int {
+    return i.size
 }
 
 func (i *baseIndex) Items() map[int64]math.Vector {

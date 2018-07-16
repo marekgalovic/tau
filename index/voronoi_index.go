@@ -8,6 +8,7 @@ import (
     "sync";
     "runtime";
     "math/rand";
+    "context";
     "encoding/binary";
 
     "github.com/marekgalovic/tau/math";
@@ -69,7 +70,7 @@ func (index *voronoiIndex) ToProto() *pb.Index {
 }
 
 // Build builds the search tree.
-func (index *voronoiIndex) Build() {
+func (index *voronoiIndex) Build(ctx context.Context) {
     stack := utils.NewStack()
     stack.Push(index.root)
 
@@ -80,12 +81,18 @@ func (index *voronoiIndex) Build() {
             continue
         }
 
-        initialCells := index.initializeCells(parent, index.splitFactor)
-        parent.children = index.kMeans(parent, initialCells)
+        initialCells := index.initializeCells(ctx, parent, index.splitFactor)
+        parent.children = index.kMeans(ctx, parent, initialCells)
         parent.itemIds = nil
 
         for _, child := range parent.children {
             stack.Push(child)
+        }
+
+        select {
+        case <-ctx.Done():
+            return
+        default:
         }
     }
 }
@@ -259,7 +266,7 @@ func (index *voronoiIndex) initialCell(ids []int64) *voronoiCell {
     return &voronoiCell{centroid: index.items[itemId]}
 }
 
-func (index *voronoiIndex) initializeCells(parent *voronoiCell, k int) []*voronoiCell {
+func (index *voronoiIndex) initializeCells(ctx context.Context, parent *voronoiCell, k int) []*voronoiCell {
     // K-means++ centroid initialization
     cells := []*voronoiCell {
         index.initialCell(parent.itemIds),
@@ -281,12 +288,18 @@ func (index *voronoiIndex) initializeCells(parent *voronoiCell, k int) []*vorono
             j++
         }
         cells = append(cells, &voronoiCell{centroid: index.Get(distances[j].itemId)})
+
+        select {
+        case <-ctx.Done():
+            return nil
+        default:
+        }
     }
     
     return cells
 }
 
-func (index *voronoiIndex) kMeans(parent *voronoiCell, cells []*voronoiCell) []*voronoiCell {
+func (index *voronoiIndex) kMeans(ctx context.Context, parent *voronoiCell, cells []*voronoiCell) []*voronoiCell {
     // Lloyd's iteration
     newCentroids := make([]math.Vector, len(cells))
 
@@ -314,6 +327,12 @@ func (index *voronoiIndex) kMeans(parent *voronoiCell, cells []*voronoiCell) []*
             break
         }
         previousCost = cost
+
+        select {
+        case <-ctx.Done():
+            return nil
+        default:
+        }
     }
 
     return cells

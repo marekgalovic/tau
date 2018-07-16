@@ -48,6 +48,8 @@ type cluster struct {
 
     connCache map[string]*grpc.ClientConn
     connCacheMutex *sync.Mutex
+
+    log *log.Entry
 }
 
 func NewCluster(zk utils.Zookeeper) (Cluster, error) {
@@ -67,6 +69,9 @@ func NewCluster(zk utils.Zookeeper) (Cluster, error) {
         nodeChangesNotifications: utils.NewThreadSafeBroadcast(),
         connCache: make(map[string]*grpc.ClientConn),
         connCacheMutex: &sync.Mutex{},
+        log: log.WithFields(log.Fields{
+            "local_uuid": uuid,
+        }),
     }
 
     if err := c.bootstrapZk(); err != nil {
@@ -146,6 +151,9 @@ func (c *cluster) watchNodes() {
                 if err != nil {
                     panic(err)
                 }
+                c.log.WithFields(log.Fields{
+                    "uuid": node.Meta().GetUuid(),
+                }).Info("New cluster node")
 
                 c.addNode(event.ZNode, node)
                 c.nodeChangesNotifications.Send(&NodesChangedNotification {
@@ -154,6 +162,9 @@ func (c *cluster) watchNodes() {
                 })
             case utils.EventZkNodeDeleted:
                 node, _ := c.getNode(event.ZNode)
+                c.log.WithFields(log.Fields{
+                    "uuid": node.Meta().GetUuid(),
+                }).Info("Cluster node deleted")
 
                 c.deleteNode(event.ZNode)
                 c.nodeChangesNotifications.Send(&NodesChangedNotification {
@@ -176,7 +187,7 @@ func (c *cluster) Close() {
     c.connCacheMutex.Lock()
     for _, conn := range c.connCache {
         if err := conn.Close(); err != nil {
-            log.Error(err)
+            c.log.Error(err)
         }
     }
 }
