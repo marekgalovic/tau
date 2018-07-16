@@ -164,7 +164,7 @@ func (p *partition) populateIndex() error {
         }
         defer file.Close()
 
-        csv := serde.NewCsvReader(file, ",")
+        csv := serde.NewCsvReader(file)
         for {
             id, item, err := csv.ReadItem()
             if err == io.EOF {

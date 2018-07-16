@@ -3,27 +3,26 @@ package serde
 import (
     "fmt";
     "io";
-    "bytes";
-    "bufio";
-    "encoding/binary";
+    "encoding/csv";
+    "strconv";
 
     "github.com/marekgalovic/tau/math";
 )
 
+var csvSeparator []byte = []byte(",")
+
 type csvReader struct{
-    reader *bufio.Reader
-    sep []byte
+    reader *csv.Reader
 }
 
-func NewCsvReader(file io.Reader, sep string) *csvReader {
+func NewCsvReader(file io.Reader) *csvReader {
     return &csvReader{
-        reader: bufio.NewReader(file),
-        sep: []byte(sep),
+        reader: csv.NewReader(file),
     }
 }
 
 func (r *csvReader) ReadItem() (int64, math.Vector, error) {
-    line, _, err := r.reader.ReadLine()
+    line, err := r.reader.Read()
     if err != nil {
         return 0, nil, err
     }
@@ -31,23 +30,24 @@ func (r *csvReader) ReadItem() (int64, math.Vector, error) {
     return r.deserialize(line)
 }
 
-func (r *csvReader) deserialize(data []byte) (int64, math.Vector, error) {
-    values := bytes.Split(data, r.sep)
-    if len(values) < 2 {
+func (r *csvReader) deserialize(data []string) (int64, math.Vector, error) {
+    if len(data) < 2 {
         return 0, nil, fmt.Errorf("Not enough values")
     }
 
-    id, nRead := binary.Varint(values[0])
-    if nRead == 0 {
-        return 0, nil, fmt.Errorf("Failed to parse item id. Buffer to small")
-    }
-    if nRead < 0 {
-        return 0, nil, fmt.Errorf("Item id value is greater that int64. Buffer overflow")
-    }
-
-    vector, err := math.VectorFromBytes(values[1:])
+    id, err := strconv.ParseInt(data[0], 10, 64)
     if err != nil {
         return 0, nil, err
     }
-    return id, vector, nil
+
+    vec := make(math.Vector, len(data[1:]))
+    for i, rawValue := range data[1:] {
+        value, err := strconv.ParseFloat(rawValue, 32)
+        if err != nil {
+            return 0, nil, err
+        }
+        vec[i] = math.Float(float32(value))
+    }
+
+    return id, vec, nil
 }
