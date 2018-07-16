@@ -6,7 +6,7 @@ import (
     "encoding/binary";
 )
 
-type Vector []Float
+type Vector []float32
 
 func (v Vector) Len() int { return len(v) }
 
@@ -22,7 +22,7 @@ func (v Vector) Sort() Vector {
 func VectorFromSlice(slice []float32) Vector {
     vector := make(Vector, len(slice))
     for i, element := range slice {
-        vector[i] = Float(element)
+        vector[i] = float32(element)
     }
     return vector
 }
@@ -36,7 +36,7 @@ func VectorFromBytes(bytesSlice [][]byte) (Vector, error) {
         if err != nil {
             return nil, err
         }
-        vector[i] = Float(element)
+        vector[i] = float32(element)
     }
     return vector, nil
 }
@@ -53,15 +53,15 @@ func OnesVector(size int) Vector {
     return vector
 }
 
-func Dot(a, b Vector) Float {
-    var dot Float
+func Dot(a, b Vector) float32 {
+    var dot float32
     for i := 0; i < len(a); i++ {
         dot += a[i] * b[i]
     }
     return dot
 }
 
-func Length(a Vector) Float {
+func Length(a Vector) float32 {
     return Sqrt(Dot(a, a))
 }
 
@@ -105,7 +105,7 @@ func VectorDivide(a, b Vector) Vector {
     return result
 }
 
-func VectorScalarAdd(a Vector, b Float) Vector {
+func VectorScalarAdd(a Vector, b float32) Vector {
     result := make(Vector, len(a))
     for i := 0; i < len(a); i++ {
         result[i] = a[i] + b
@@ -113,7 +113,7 @@ func VectorScalarAdd(a Vector, b Float) Vector {
     return result
 }
 
-func VectorScalarSubtract(a Vector, b Float) Vector {
+func VectorScalarSubtract(a Vector, b float32) Vector {
     result := make(Vector, len(a))
     for i := 0; i < len(a); i++ {
         result[i] = a[i] - b
@@ -121,7 +121,7 @@ func VectorScalarSubtract(a Vector, b Float) Vector {
     return result
 }
 
-func VectorScalarMultiply(a Vector, b Float) Vector {
+func VectorScalarMultiply(a Vector, b float32) Vector {
     result := make(Vector, len(a))
     for i := 0; i < len(a); i++ {
         result[i] = a[i] * b
@@ -129,7 +129,7 @@ func VectorScalarMultiply(a Vector, b Float) Vector {
     return result
 }
 
-func VectorScalarDivide(a Vector, b Float) Vector {
+func VectorScalarDivide(a Vector, b float32) Vector {
     result := make(Vector, len(a))
     for i := 0; i < len(a); i++ {
         result[i] = a[i] / b

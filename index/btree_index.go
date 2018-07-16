@@ -62,6 +62,11 @@ func (index *btreeIndex) ToProto() *pb.Index {
     return proto
 }
 
+func (index *btreeIndex) Reset() {
+    index.trees = make([]*btreeNode, index.numTrees)
+    index.baseIndex.Reset()
+}
+
 // Build builds the forest.
 // As individual trees are independent of each other they
 // are built in parallel.

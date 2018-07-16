@@ -16,10 +16,11 @@ type Index interface {
     ByteSize() int
     Len() int
     Size() int
+    Reset()
     Items() map[int64]math.Vector
     Add(int64, math.Vector) error
     Get(int64) math.Vector
-    ComputeDistance(math.Vector, math.Vector) math.Float
+    ComputeDistance(math.Vector, math.Vector) float32
     Load(io.Reader) error
     Save(io.Writer) error
     ToProto() *pb.Index
@@ -49,6 +50,10 @@ func (i *baseIndex) Len() int {
 
 func (i *baseIndex) Size() int {
     return i.size
+}
+
+func (i *baseIndex) Reset() {
+    i.items = make(map[int64]math.Vector)
 }
 
 func (i *baseIndex) Items() map[int64]math.Vector {
@@ -89,7 +94,7 @@ func (i *baseIndex) Get(id int64) math.Vector {
     return i.items[id]
 }
 
-func (i *baseIndex) ComputeDistance(a, b math.Vector) math.Float {
+func (i *baseIndex) ComputeDistance(a, b math.Vector) float32 {
     if i.metric == "Euclidean" {
         return math.EuclideanDistance(a, b)
     }

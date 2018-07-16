@@ -13,36 +13,34 @@ func SetParallelThreshold(threshold int) { parallelThreshold = threshold }
 
 func SetNumRoutines(n int) { numRoutines = n }
 
-type Float float32
+const MaxFloat = float32(goMath.MaxFloat32)
 
-const MaxFloat = Float(goMath.MaxFloat32)
-
-func Abs(x Float) Float {
-    return Float(goMath.Abs(float64(x)))
+func Abs(x float32) float32 {
+    return float32(goMath.Abs(float64(x)))
 }
 
-func Pow(x, power Float) Float {
+func Pow(x, power float32) float32 {
     // Slow
-    return Float(goMath.Pow(float64(x), float64(power)))
+    return float32(goMath.Pow(float64(x), float64(power)))
 }
 
-func Square(x Float) Float {
+func Square(x float32) float32 {
     return x * x
 }
 
-func Sqrt(x Float) Float {
-    return Float(goMath.Sqrt(float64(x)))
+func Sqrt(x float32) float32 {
+    return float32(goMath.Sqrt(float64(x)))
 }
 
-func Log(x Float) Float {
-    return Float(goMath.Log(float64(x)))
+func Log(x float32) float32 {
+    return float32(goMath.Log(float64(x)))
 }
 
-func Trunc(x Float) int {
+func Trunc(x float32) int {
     return int(goMath.Trunc(float64(x)))
 }
 
-func Min(values ...Float) Float {
+func Min(values ...float32) float32 {
     min := MaxFloat
     for _, value := range values {
         if value < min {
@@ -52,7 +50,7 @@ func Min(values ...Float) Float {
     return min
 }
 
-func Max(values ...Float) Float {
+func Max(values ...float32) float32 {
     max := -MaxFloat
     for _, value := range values {
         if value > max {
@@ -66,7 +64,7 @@ func EquidistantPlane(a, b Vector) Vector {
     assertSameDim(&a, &b)
 
     normal := make(Vector, len(a))
-    var d Float
+    var d float32
     for i := 0; i < len(a); i++ {
         normal[i] = (b[i] - a[i])
         d += normal[i] * ((a[i] + b[i]) / 2)
@@ -75,12 +73,12 @@ func EquidistantPlane(a, b Vector) Vector {
     return append(normal, d)
 }
 
-func PointPlaneDistance(point, plane Vector) Float {
+func PointPlaneDistance(point, plane Vector) float32 {
     if len(point) != len(plane) - 1 {
         panic("Plane vector must be have one more dimension than point.")
     }
 
-    var dot, normalNorm Float
+    var dot, normalNorm float32
     for i := 0; i < len(point); i++ {
         dot += point[i] * plane[i]
         normalNorm += Square(plane[i])

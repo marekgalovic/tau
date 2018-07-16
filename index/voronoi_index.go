@@ -25,7 +25,7 @@ type voronoiIndex struct {
 
 type voronoiCell struct {
     centroid math.Vector
-    cost math.Float
+    cost float32
     itemIds []int64
     children []*voronoiCell
 }
@@ -33,7 +33,7 @@ type voronoiCell struct {
 type itemCellDistance struct {
     itemId int64
     cellId int
-    distance math.Float
+    distance float32
 }
 
 // Voronoi index builds a tree using kMeans algorithm.
@@ -47,6 +47,11 @@ func NewVoronoiIndex(size int, metric string, splitFactor, maxCellItems int) Ind
         maxCellItems: maxCellItems,
         root: &voronoiCell{},
     }
+}
+
+func (index *voronoiIndex) Reset() {
+    index.root = &voronoiCell{}
+    index.baseIndex.Reset()
 }
 
 func (index *voronoiIndex) Add(id int64, value math.Vector) error {
@@ -275,7 +280,7 @@ func (index *voronoiIndex) initializeCells(ctx context.Context, parent *voronoiC
     distances := make([]*itemCellDistance, len(parent.itemIds))
     for i := 0; i < k; i++ {
         j := 0
-        var cumulativeDistance math.Float
+        var cumulativeDistance float32
         for icDistance := range index.itemCellDistances(parent.itemIds, cells) {
             distances[j] = icDistance
             cumulativeDistance += icDistance.distance
@@ -303,14 +308,14 @@ func (index *voronoiIndex) kMeans(ctx context.Context, parent *voronoiCell, cell
     // Lloyd's iteration
     newCentroids := make([]math.Vector, len(cells))
 
-    var previousCost math.Float
+    var previousCost float32
     for i := 0; i < 100; i++ {
         for j, _ := range cells {
             cells[j].itemIds = make([]int64, 0)
             newCentroids[j] = make(math.Vector, index.size)
         }
 
-        var cost math.Float
+        var cost float32
         for icDistance := range index.itemCellDistances(parent.itemIds, cells) {
             cells[icDistance.cellId].cost += icDistance.distance
             cells[icDistance.cellId].itemIds = append(cells[icDistance.cellId].itemIds, icDistance.itemId)
@@ -320,7 +325,7 @@ func (index *voronoiIndex) kMeans(ctx context.Context, parent *voronoiCell, cell
         }
 
         for cellId, centroid := range newCentroids {
-            cells[cellId].centroid = math.VectorScalarDivide(centroid, math.Float(len(cells[cellId].itemIds)))
+            cells[cellId].centroid = math.VectorScalarDivide(centroid, float32(len(cells[cellId].itemIds)))
         }
 
         if math.Abs(cost - previousCost) < 10 {
@@ -338,7 +343,7 @@ func (index *voronoiIndex) kMeans(ctx context.Context, parent *voronoiCell, cell
     return cells
 }
 
-func (index *voronoiIndex) nearestCell(item math.Vector, cells []*voronoiCell) (int, math.Float) {
+func (index *voronoiIndex) nearestCell(item math.Vector, cells []*voronoiCell) (int, float32) {
     minDistance := math.MaxFloat
     var id int
     for cellId, cell := range cells {

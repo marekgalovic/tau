@@ -46,7 +46,7 @@ func (r *csvReader) deserialize(data []string) (int64, math.Vector, error) {
         if err != nil {
             return 0, nil, err
         }
-        vec[i] = math.Float(float32(value))
+        vec[i] = float32(value)
     }
 
     return id, vec, nil

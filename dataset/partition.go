@@ -101,7 +101,7 @@ func (p *partition) Load() error {
 func (p *partition) Unload() error {
     p.log.Info("Unload partition")
     p.cancel()
-    p.index = nil
+    p.index.Reset()
     return nil
 }
 

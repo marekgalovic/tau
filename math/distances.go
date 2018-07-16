@@ -2,10 +2,10 @@ package math
 
 var SupportedDistanceMetrics = []string{"Euclidean", "Manhattan", "Cosine"}
 
-func EuclideanDistance(a, b Vector) Float {
+func EuclideanDistance(a, b Vector) float32 {
     assertSameDim(&a, &b)
 
-    var distance Float
+    var distance float32
     for i := 0; i < len(a); i++ {
         distance += Square(a[i] - b[i])
     }
@@ -13,10 +13,10 @@ func EuclideanDistance(a, b Vector) Float {
     return Sqrt(distance)
 }
 
-func ManhattanDistance(a, b Vector) Float {
+func ManhattanDistance(a, b Vector) float32 {
     assertSameDim(&a, &b)
 
-    var distance Float
+    var distance float32
     for i := 0; i < len(a); i++ {
         distance += Abs(a[i] - b[i])
     }
@@ -24,12 +24,12 @@ func ManhattanDistance(a, b Vector) Float {
     return distance
 }
 
-func CosineDistance(a, b Vector) Float {
+func CosineDistance(a, b Vector) float32 {
     assertSameDim(&a, &b)
 
-    var dot Float
-    var aNorm Float
-    var bNorm Float
+    var dot float32
+    var aNorm float32
+    var bNorm float32
     for i := 0; i < len(a); i++ {
         dot += a[i] * b[i]
         aNorm += Square(a[i])

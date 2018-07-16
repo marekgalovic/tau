@@ -16,3 +16,8 @@ type SerializerDeserializer interface {
     Serializer
     Deserializer
 }
+
+type indexItem struct {
+    Id int64 `json:"id"`
+    Value []float32 `json:"value"`   
+}
