@@ -2,24 +2,37 @@ package serde
 
 import (
     "fmt";
+    "io";
     "bytes";
+    "bufio";
     "encoding/binary";
 
     "github.com/marekgalovic/tau/math";
 )
 
-type csvSerde struct{
+type csvReader struct{
+    reader *bufio.Reader
     sep []byte
 }
 
-func NewCsv(sep string) *csvSerde {
-    return &csvSerde{
+func NewCsvReader(file io.Reader, sep string) *csvReader {
+    return &csvReader{
+        reader: bufio.NewReader(file),
         sep: []byte(sep),
     }
 }
 
-func (csv *csvSerde) DeserializeItem(data []byte) (int64, math.Vector, error) {
-    values := bytes.Split(data, csv.sep)
+func (r *csvReader) ReadItem() (int64, math.Vector, error) {
+    line, _, err := r.reader.ReadLine()
+    if err != nil {
+        return 0, nil, err
+    }
+
+    return r.deserialize(line)
+}
+
+func (r *csvReader) deserialize(data []byte) (int64, math.Vector, error) {
+    values := bytes.Split(data, r.sep)
     if len(values) < 2 {
         return 0, nil, fmt.Errorf("Not enough values")
     }

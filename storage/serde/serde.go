@@ -9,7 +9,7 @@ type Serializer interface {
 }
 
 type Deserializer interface {
-    DeserializeItem([]byte) (int64, math.Vector, error)
+    ReadItem() (int64, math.Vector, error)
 }
 
 type SerializerDeserializer interface {

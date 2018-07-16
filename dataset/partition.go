@@ -6,7 +6,6 @@ import (
     "context";
     "crypto/sha256";
     "path/filepath";
-    "bufio";
     "time";
 
     "github.com/marekgalovic/tau/index";
@@ -165,18 +164,12 @@ func (p *partition) populateIndex() error {
         }
         defer file.Close()
 
-        csv := serde.NewCsv("\t")
-        reader := bufio.NewReader(file)
+        csv := serde.NewCsvReader(file, ",")
         for {
-            line, _, err := reader.ReadLine()
+            id, item, err := csv.ReadItem()
             if err == io.EOF {
                 break
             }
-            if err != nil {
-                return err
-            }
-
-            id, item, err := csv.DeserializeItem(line)
             if err != nil {
                 return err
             }
