@@ -136,11 +136,11 @@ func (z *zookeeper) ChildrenChanges(ctx context.Context, path string) (<-chan Ch
             initialized = true
 
             select {
-            case <- event:
             case <- ctx.Done():
                 close(changes)
                 close(errors)
                 return
+            case <- event:
             }
         }
     }(changes, errors)

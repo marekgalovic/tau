@@ -122,6 +122,8 @@ func (m *manager) watchDatasets() {
 
     for {
         select {
+        case <-m.ctx.Done():
+            return
         case event := <-changes:
             switch event.Type {
             case utils.EventZkWatchInit, utils.EventZkNodeCreated:
@@ -157,8 +159,6 @@ func (m *manager) watchDatasets() {
             }
         case err := <-errors:
             panic(err)
-        case <-m.ctx.Done():
-            return
         }
     }
 }
@@ -169,6 +169,8 @@ func (m *manager) run() {
 
     for {
         select {
+        case <-m.ctx.Done():
+            return
         case n := <-clusterNotifications:
             notification := n.(*cluster.NodesChangedNotification)
 
@@ -188,9 +190,6 @@ func (m *manager) run() {
             case EventDatasetDeleted:
                 go m.datasetDeleted(notification.Dataset)
             }
-
-        case <-m.ctx.Done():
-            return
         }
     }
 }

@@ -119,13 +119,13 @@ func (p *partition) Load() error {
             }
 
             select {
+            case <-p.loadCtx.Done():
+                return nil
             case e := <-event:
                 if e.Type == zk.EventNodeDeleted {
                     goto LOAD_INDEX
                 }
                 continue
-            case <-p.loadCtx.Done():
-                return nil
             }
         }
     }
@@ -230,6 +230,8 @@ func (p *partition) watchNodes() {
 
     for {
         select {
+        case <-p.ctx.Done():
+            return
         case event := <-changes:
             switch event.Type {
             case utils.EventZkWatchInit, utils.EventZkNodeCreated:
@@ -247,8 +249,6 @@ func (p *partition) watchNodes() {
             }
         case err := <-errors:
             panic(err)
-        case <-p.ctx.Done():
-            return
         }
     }
 }

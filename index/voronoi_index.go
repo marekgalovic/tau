@@ -232,13 +232,14 @@ func (index *voronoiIndex) Search(ctx context.Context, query math.Vector) Search
     stack.Push(index.root)
 
     resultIds := utils.NewSet()
-    searchLoop:
+    SEARCH_LOOP:
     for stack.Len() > 0 {
         select {
         case <-ctx.Done():
-            return nil
+            break SEARCH_LOOP
         default:
         }
+
         cell := stack.Pop().(*voronoiCell)
 
         if cell.isLeaf() {
@@ -246,7 +247,7 @@ func (index *voronoiIndex) Search(ctx context.Context, query math.Vector) Search
                 resultIds.Add(itemId)
 
                 if resultIds.Len() >= maxResultCandidates {
-                    break searchLoop
+                    break SEARCH_LOOP
                 }
             }
             continue

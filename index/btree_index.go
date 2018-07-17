@@ -228,25 +228,25 @@ func (index *btreeIndex) Search(ctx context.Context, query math.Vector) SearchRe
     var nDone int
     resultIds := utils.NewSet()
 
-    searchLoop:
+    SEARCH_LOOP:
     for {
         select {
+        case <- ctx.Done():
+            break SEARCH_LOOP
+        case <- time.After(1 * time.Second):
+            break SEARCH_LOOP
         case resultSlice := <- resultsChan:
             for _, id := range resultSlice {
                 resultIds.Add(id)
                 if resultIds.Len() == index.numTrees * index.maxLeafItems {
-                    break searchLoop
+                    break SEARCH_LOOP
                 }
             }
         case <- doneChan:
             nDone++
             if nDone == len(index.trees) {
-                break searchLoop
+                break SEARCH_LOOP
             }
-        case <- time.After(1 * time.Second):
-            break searchLoop
-        case <- ctx.Done():
-            return nil
         }
     }
 

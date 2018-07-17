@@ -110,6 +110,8 @@ func (d *dataset) Search(k int32, query math.Vector) ([]*pb.SearchResultItem, er
     SEARCH_LOOP:
     for {
         select {
+        case <-d.ctx.Done():
+            break SEARCH_LOOP
         case item := <-items:
             if item == nil {
                 nDone++
@@ -124,8 +126,6 @@ func (d *dataset) Search(k int32, query math.Vector) ([]*pb.SearchResultItem, er
             close(items)
             close(errors)
             return nil, err
-        case <-d.ctx.Done():
-            break SEARCH_LOOP
         }
     }
     sort.Sort(result)
