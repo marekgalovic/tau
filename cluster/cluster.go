@@ -166,7 +166,9 @@ func (c *cluster) watchNodes() {
                 })
             }
         case err := <-errors:
-            panic(err)
+            if err != nil {
+                panic(err)
+            }
         }
     }
 }

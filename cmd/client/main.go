@@ -30,8 +30,8 @@ func main() {
     printDatasets(client)
 
     start := time.Now()
-    for i := 0; i < 10000; i++ {
-        _, err := client.Search("dataset2", 100, make([]float32, 256))
+    for i := 0; i < 100; i++ {
+        _, err := client.Search("dataset3", 100, make([]float32, 256))
         if err != nil{
             log.Fatal(err)
         }
@@ -59,11 +59,11 @@ func main() {
     }
 
     p := []*pb.DatasetPartition {
-        &pb.DatasetPartition{Id: 1, Files: []string{"./examples/data/random_normal.csv"}},
-        &pb.DatasetPartition{Id: 2, Files: []string{"./examples/data/random_normal.csv"}},
-        &pb.DatasetPartition{Id: 3, Files: []string{"./examples/data/random_normal.csv"}},
-        &pb.DatasetPartition{Id: 4, Files: []string{"./examples/data/random_normal.csv"}},
-        &pb.DatasetPartition{Id: 5, Files: []string{"./examples/data/random_normal.csv"}},
+        &pb.DatasetPartition{Id: 1, Files: []string{"gs://tau-test/data/random_normal.csv"}},
+        &pb.DatasetPartition{Id: 2, Files: []string{"gs://tau-test/data/random_normal.csv"}},
+        &pb.DatasetPartition{Id: 3, Files: []string{"gs://tau-test/data/random_normal.csv"}},
+        // &pb.DatasetPartition{Id: 4, Files: []string{"./examples/data/random_normal.csv"}},
+        // &pb.DatasetPartition{Id: 5, Files: []string{"./examples/data/random_normal.csv"}},
     }
 
     log.Info(p, d)

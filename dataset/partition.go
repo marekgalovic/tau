@@ -248,7 +248,9 @@ func (p *partition) watchNodes() {
                 }).Infof("Partition node deleted")
             }
         case err := <-errors:
-            panic(err)
+            if err != nil {
+                panic(err)
+            }
         }
     }
 }

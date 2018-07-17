@@ -158,7 +158,9 @@ func (m *manager) watchDatasets() {
                 })
             }
         case err := <-errors:
-            panic(err)
+            if err != nil {
+                panic(err)
+            }
         }
     }
 }
