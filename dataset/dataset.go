@@ -173,6 +173,10 @@ func (d *dataset) searchNodePartitions(node cluster.Node, k int32, query math.Ve
     })
 
     for {
+        if stream == nil {
+            break
+        }
+        
         item, err := stream.Recv()
         if err == io.EOF {
             break

@@ -1,7 +1,7 @@
 package main
 
 import (
-    // "time";
+    "time";
 
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/client";
@@ -29,7 +29,16 @@ func main() {
 
     printDatasets(client)
 
-    log.Info(client.Search("dataset2", 100, make([]float32, 256)))
+    start := time.Now()
+    for i := 0; i < 10000; i++ {
+        _, err := client.Search("dataset2", 100, make([]float32, 256))
+        if err != nil{
+            log.Fatal(err)
+        }
+        log.Info("Result")
+        <-time.After(10 * time.Millisecond)
+    }
+    log.Infof("Search time: %s", time.Since(start))
 
     name := "dataset3"
     d := &pb.Dataset {

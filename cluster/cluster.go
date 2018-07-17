@@ -115,31 +115,10 @@ func (c *cluster) register() error {
     if err != nil {
         return err
     }
-    _, err = c.zk.CreateProtectedEphemeralSequential(filepath.Join(zkNodesPath, "n"), nodeData)
+
+    _, err = c.zk.Create(filepath.Join(zkNodesPath, c.Uuid()), nodeData, zk.FlagEphemeral)
 
     return err
-}
-
-func (c *cluster) getNode(zNode string) (Node, bool) {
-    defer c.nodesMutex.Unlock()
-    c.nodesMutex.Lock()
-
-    node, exists := c.nodes[zNode]
-    return node, exists
-}
-
-func (c *cluster) addNode(zNode string, node Node) {
-    defer c.nodesMutex.Unlock()
-    c.nodesMutex.Lock()
-
-    c.nodes[zNode] = node   
-}
-
-func (c *cluster) deleteNode(zNode string) {
-    defer c.nodesMutex.Unlock()
-    c.nodesMutex.Lock()
-
-    delete(c.nodes, zNode)
 }
 
 func (c *cluster) watchNodes() {
@@ -147,6 +126,8 @@ func (c *cluster) watchNodes() {
 
     for {
         select {
+        case <-c.ctx.Done():
+            return
         case event := <-changes:
             switch event.Type {
             case utils.EventZkWatchInit, utils.EventZkNodeCreated:
@@ -158,18 +139,27 @@ func (c *cluster) watchNodes() {
                     "uuid": node.Meta().GetUuid(),
                 }).Info("New cluster node")
 
-                c.addNode(event.ZNode, node)
                 c.nodeChangesNotifications.Send(&NodesChangedNotification {
                     Event: EventNodeCreated,
                     Node: node,
                 })
             case utils.EventZkNodeDeleted:
-                node, _ := c.getNode(event.ZNode)
+                node, err := c.GetNode(event.ZNode)
+                if err != nil {
+                    panic(err)
+                }
+                if node == nil {
+                    panic("Node does not exists")
+                }
+
                 c.log.WithFields(log.Fields{
                     "uuid": node.Meta().GetUuid(),
                 }).Info("Cluster node deleted")
 
-                c.deleteNode(event.ZNode)
+                c.nodesMutex.Lock()
+                delete(c.nodes, event.ZNode)
+                c.nodesMutex.Unlock()
+
                 c.nodeChangesNotifications.Send(&NodesChangedNotification {
                     Event: EventNodeDeleted,
                     Node: node,
@@ -177,8 +167,6 @@ func (c *cluster) watchNodes() {
             }
         case err := <-errors:
             panic(err)
-        case <-c.ctx.Done():
-            return
         }
     }
 }
@@ -200,15 +188,15 @@ func (c *cluster) Uuid() string {
 }
 
 func (c *cluster) ListNodes() ([]Node, error) {
-    nodeNames, err := c.zk.Children(zkNodesPath)
+    uuids, err := c.zk.Children(zkNodesPath)
     if err != nil {
         return nil, err
     }
 
-    nodes := make([]Node, len(nodeNames))
-    for i, nodeName := range nodeNames {
+    nodes := make([]Node, len(uuids))
+    for i, uuid := range uuids {
         var err error
-        if nodes[i], err = c.GetNode(nodeName); err != nil {
+        if nodes[i], err = c.GetNode(uuid); err != nil {
             return nil, err
         }
     }
@@ -216,46 +204,60 @@ func (c *cluster) ListNodes() ([]Node, error) {
     return nodes, nil
 }
 
-func (c *cluster) GetNode(nodeName string) (Node, error) {
-    path := filepath.Join(zkNodesPath, nodeName)
+func (c *cluster) GetNode(uuid string) (Node, error) {
+    c.nodesMutex.Lock()
+    node, exists := c.nodes[uuid]
+    c.nodesMutex.Unlock()
+
+    if exists {
+        return node, nil
+    }
+
+    path := filepath.Join(zkNodesPath, uuid)
     nodeData, err := c.zk.Get(path)
     if err != nil {
         return nil, err
     }
 
-    node := &pb.Node{}
-    if err = proto.Unmarshal(nodeData, node); err != nil {
-        return nil, err
-    }
-    node.ZkPath = path
-
-    if node.SeqId, err = utils.ParseSeqId(nodeName); err != nil {
+    nodeProto := &pb.Node{}
+    if err = proto.Unmarshal(nodeData, nodeProto); err != nil {
         return nil, err
     }
 
-    return newNode(node, c), nil
+    node = NewNode(nodeProto, c)
+
+    c.nodesMutex.Lock()
+    c.nodes[uuid] = node
+    c.nodesMutex.Unlock()
+
+    return node, nil
 }
 
 func (c *cluster) NodeChanges() <-chan interface{} {
     return c.nodeChangesNotifications.Listen(10)
 }
 
-func (c *cluster) dialNode(address string) (*grpc.ClientConn, error) {
+func (c *cluster) dialNode(uuid string) (*grpc.ClientConn, error) {
     c.connCacheMutex.Lock()
-    conn, exists := c.connCache[address]
+    conn, exists := c.connCache[uuid]
     c.connCacheMutex.Unlock()
 
     if exists {
         return conn, nil
     }
 
-    conn, err := grpc.DialContext(c.ctx, address, grpc.WithInsecure(), grpc.WithTimeout(2 * time.Second), grpc.WithBlock())
+    node, err := c.GetNode(uuid)
+    if err != nil {
+        return nil, err
+    }
+
+    conn, err = grpc.DialContext(c.ctx, node.Address(), grpc.WithInsecure(), grpc.WithTimeout(2 * time.Second), grpc.WithBlock())
     if err != nil {
         return nil, err
     }
 
     c.connCacheMutex.Lock()
-    c.connCache[address] = conn
+    c.connCache[uuid] = conn
     c.connCacheMutex.Unlock()
 
     return conn, nil

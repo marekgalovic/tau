@@ -8,6 +8,7 @@ import (
 
 type Set interface {
     Len() int
+    Clear()
     Add(interface{})
     Remove(interface{})
     Contains(interface{}) bool
@@ -16,6 +17,7 @@ type Set interface {
     ToIterator() <-chan interface{}
     ToSlice() []interface{}
     String() string
+    Rand() interface{}
 }
 
 type baseSet map[interface{}]struct{}
@@ -35,6 +37,10 @@ func NewSet(elements ...interface{}) Set {
 
 func (s *baseSet) Len() int {
     return len(*s)
+}
+
+func (s *baseSet) Clear() {
+    *s = make(baseSet)
 }
 
 func (s *baseSet) Add(element interface{}) {
@@ -107,6 +113,14 @@ func (s *baseSet) String() string {
     return fmt.Sprintf("{%s}", strings.Join(elementStrings, ", "))
 }
 
+func (s *baseSet) Rand() interface{} {
+    for element, _ := range *s {
+        return element
+    }
+
+    return nil
+}
+
 func NewThreadSafeSet(elements ...interface{}) Set {
     set := &threadSafeSet {
         baseSet: make(baseSet),
@@ -123,6 +137,13 @@ func (s *threadSafeSet) Len() int {
     s.mutex.Lock()
 
     return s.baseSet.Len() 
+}
+
+func (s *threadSafeSet) Clear() {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    s.baseSet.Clear() 
 }
 
 func (s *threadSafeSet) Add(element interface{}) {
@@ -172,4 +193,11 @@ func (s *threadSafeSet) String() string {
     s.mutex.Lock()
 
     return s.baseSet.String()
+}
+
+func (s *threadSafeSet) Rand() interface{} {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.Rand()
 }
