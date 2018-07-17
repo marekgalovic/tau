@@ -165,7 +165,6 @@ func (service *datasetsService) getDataset(name string) (*pb.Dataset, error) {
     if err = proto.Unmarshal(datasetData, dataset); err != nil {
         return nil, err
     }
-    dataset.ZkPath = zkPath
 
     return dataset, nil
 }

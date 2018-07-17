@@ -26,17 +26,14 @@ func main() {
     }
     defer cluster.Close()
 
-    gcStorage, err := storage.NewGCS()
-    if err != nil {
-        log.Fatal(err)
-    }
-    datasetsManager, err := dataset.NewManager(config.Dataset, zookeeper, cluster, gcStorage)
+    lStorage := storage.NewLocal()
+    datasetsManager, err := dataset.NewManager(config.Dataset, zookeeper, cluster, lStorage)
     if err != nil {
         log.Fatal(err)
     }
     datasetsManager.Run()
 
-    server := tau.NewServer(config, zookeeper, datasetsManager, gcStorage)
+    server := tau.NewServer(config, zookeeper, datasetsManager, lStorage)
     if err := server.Start(); err != nil {
         log.Fatal(err)
     }

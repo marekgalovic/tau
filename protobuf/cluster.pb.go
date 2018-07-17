@@ -22,6 +22,8 @@ It has these top-level messages:
 	BtreeIndexOptions
 	VoronoiIndexOptions
 	Index
+	CsvDataset
+	JsonDataset
 	Dataset
 	DatasetPartition
 	SearchRequest

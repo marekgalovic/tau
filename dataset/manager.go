@@ -138,7 +138,7 @@ func (m *manager) watchDatasets() {
                 
                 log.WithFields(log.Fields{
                     "dataset_name": dataset.Meta().GetName(),
-                }).Info("Dataset created")
+                }).Info("New created")
 
                 m.addDataset(dataset)
                 m.datasetChangesNotifications.Send(&DatasetsChangedNotification {
@@ -270,15 +270,19 @@ func (m *manager) datasetCreated(dataset Dataset) {
     
     if ownedPartitions.Len() > 0 {
         m.localDatasets.Add(dataset.Meta().GetName())
-        dataset.BuildPartitions(ownedPartitions)
+        if err := dataset.BuildPartitions(ownedPartitions); err != nil {
+            log.Errorf("Failed to load dataset. Err: %v", err)
+        }
     }
 }
 
 func (m *manager) datasetDeleted(dataset Dataset) {
     if m.localDatasets.Contains(dataset.Meta().GetName()) {
         if err := dataset.DeleteAllPartitions(); err != nil {
-            panic(err)
+            log.Errorf("Failed to delete dataset. Err: %v", err)
+            return
         }
+
         log.WithFields(log.Fields{
             "dataset_name": dataset.Meta().GetName(),
         }).Info("Delete local")
@@ -306,7 +310,6 @@ func (m *manager) getDatasetData(name string) (*pb.Dataset, error) {
     if err = proto.Unmarshal(datasetData, datasetMeta); err != nil {
         return nil, err
     }
-    datasetMeta.ZkPath = zkPath
 
     return datasetMeta, nil
 }

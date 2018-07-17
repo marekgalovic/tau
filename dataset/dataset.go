@@ -211,48 +211,47 @@ func (d *dataset) BuildPartitions(updatedPartitions utils.Set) error {
     }
     d.localPartitions = d.localPartitions.Union(updatedPartitions)
 
+    errors := make(chan error)
     for _, partitionId := range newPartitions.ToSlice() {
-        go d.loadPartition(partitionId.(string))   
+        go d.loadPartition(partitionId.(string), errors)
     }
 
-    return nil
+    return utils.WaitUntilAllSuccessful(d.ctx, newPartitions.Len(), errors)
 }
 
 func (d *dataset) DeletePartitions(deletedPartitions utils.Set) error {
     d.localPartitions = d.localPartitions.Difference(deletedPartitions)
 
+    errors := make(chan error)
     for _, partitionId := range deletedPartitions.ToSlice() {
-        go d.unloadPartition(partitionId.(string))
+        go d.unloadPartition(partitionId.(string), errors)
     }
 
-    return nil
+    return utils.WaitUntilAllSuccessful(d.ctx, deletedPartitions.Len(), errors)
 }
 
 func (d *dataset) DeleteAllPartitions() error {
+    errors := make(chan error)
     for _, partitionId := range d.localPartitions.ToSlice() {
-        go d.unloadPartition(partitionId.(string))
+        go d.unloadPartition(partitionId.(string), errors)
     }
 
-    return nil
+    return utils.WaitUntilAllSuccessful(d.ctx, d.localPartitions.Len(), errors)
 }
 
-func (d *dataset) loadPartition(partitionId string) {
+func (d *dataset) loadPartition(partitionId string, errors chan error) {
     partition := d.partitions[partitionId]
 
-    if err := partition.Load(); err != nil {
-        panic(err)
-    }
+    errors <- partition.Load()
 }
 
-func (d *dataset) unloadPartition(partitionId string) {
+func (d *dataset) unloadPartition(partitionId string, errors chan error) {
     partition, exists := d.partitions[partitionId]
     if !exists {
-        panic("Partition does not exists")
+        errors <- fmt.Errorf("Partition %d does not exist", partitionId)
     }
-    
-    if err := partition.Unload(); err != nil {
-        panic(err)
-    }
+
+    errors <- partition.Unload()
 }
 
 func (d *dataset) listPartitions() ([]string, error) {
