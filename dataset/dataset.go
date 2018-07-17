@@ -98,14 +98,35 @@ func (d *dataset) Search(k int32, query math.Vector) ([]*pb.SearchResultItem, er
         nodePartitions[node] = append(nodePartitions[node], partitionId)
     }
 
-    result := make(index.SearchResult, 0)
+    ctx, cancel := context.WithCancel(d.ctx)
+    items := make(chan *pb.SearchResultItem)
+    errors := make(chan error)
     for node, partitions := range nodePartitions {
-        items, err := d.searchNodePartitions(node, k, query, partitions)
-        if err != nil {
-            return nil, err
-        }
+        go d.searchNodePartitions(node, k, query, partitions, ctx, items, errors)
+    }
 
-        result = append(result, items...)
+    result := make(index.SearchResult, 0)
+    nDone := 0
+    SEARCH_LOOP:
+    for {
+        select {
+        case item := <-items:
+            if item == nil {
+                nDone++
+            } else {
+                result = append(result, item)
+            }
+            if nDone == len(nodePartitions) {
+                break SEARCH_LOOP
+            }
+        case err := <-errors:
+            cancel()
+            close(items)
+            close(errors)
+            return nil, err
+        case <-d.ctx.Done():
+            break SEARCH_LOOP
+        }
     }
     sort.Sort(result)
 
@@ -117,6 +138,7 @@ func (d *dataset) Search(k int32, query math.Vector) ([]*pb.SearchResultItem, er
 }
 
 func (d *dataset) SearchPartitions(k int32, query math.Vector, partitions []string) ([]*pb.SearchResultItem, error) {
+    log.Infof("Search dataset partitions. Dataset: `%s`, partitions: %s", d.Meta().GetName(), partitions)
     result := make(index.SearchResult, 0)
 
     for _, partitionId := range partitions {
@@ -125,7 +147,7 @@ func (d *dataset) SearchPartitions(k int32, query math.Vector, partitions []stri
             return nil, fmt.Errorf("No index found for dataset: `%s`, partition: `%s`", d.Meta().GetName(), partitionId)
         }
 
-        result = append(result, partitionIndex.Search(query)...)
+        result = append(result, partitionIndex.Search(d.ctx, query)...)
     }
     sort.Sort(result)
 
@@ -136,10 +158,11 @@ func (d *dataset) SearchPartitions(k int32, query math.Vector, partitions []stri
     return result[:k], nil
 }
 
-func (d *dataset) searchNodePartitions(node cluster.Node, k int32, query math.Vector, partitions []string) ([]*pb.SearchResultItem, error) {
+func (d *dataset) searchNodePartitions(node cluster.Node, k int32, query math.Vector, partitions []string, ctx context.Context, result chan *pb.SearchResultItem, errors chan error) {
     conn, err := node.Dial()
     if err != nil {
-        return nil, err
+        errors <- err
+        return
     }
 
     stream, err := pb.NewSearchServiceClient(conn).SearchPartitions(d.ctx, &pb.SearchPartitionsRequest{
@@ -149,19 +172,28 @@ func (d *dataset) searchNodePartitions(node cluster.Node, k int32, query math.Ve
         Partitions: partitions,
     })
 
-    result := make([]*pb.SearchResultItem, 0)
     for {
         item, err := stream.Recv()
         if err == io.EOF {
             break
         }
         if err != nil {
-            return nil, err
+            errors <- err
+            return
         }
-        result = append(result, item)
+
+        select {
+        case <-ctx.Done():
+            return
+        case result <- item:
+        }
     }
 
-    return result, nil
+    select {
+    case <-ctx.Done():
+        return
+    case result <- nil:
+    }
 }
 
 func (d *dataset) LocalPartitions() []interface{} {

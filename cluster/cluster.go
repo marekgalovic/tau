@@ -27,6 +27,11 @@ type NodesChangedNotification struct {
     Node Node
 }
 
+type ClusterConfig struct {
+    Ip string
+    Port string
+}
+
 type Cluster interface {
     Close()
     Uuid() string
@@ -41,6 +46,7 @@ type cluster struct {
     uuid string
     ctx context.Context
     cancel context.CancelFunc
+    config ClusterConfig
     zk utils.Zookeeper
 
     nodes map[string]Node
@@ -53,7 +59,7 @@ type cluster struct {
     log *log.Entry
 }
 
-func NewCluster(zk utils.Zookeeper) (Cluster, error) {
+func NewCluster(config ClusterConfig, zk utils.Zookeeper) (Cluster, error) {
     uuid, err := utils.VolatileNodeUuid()
     if err != nil {
         return nil, err
@@ -64,6 +70,7 @@ func NewCluster(zk utils.Zookeeper) (Cluster, error) {
         uuid: uuid,
         ctx: ctx,
         cancel: cancel,
+        config: config,
         zk: zk,
         nodes: make(map[string]Node),
         nodesMutex: &sync.Mutex{},
@@ -104,12 +111,7 @@ func (c *cluster) bootstrapZk() error {
 }
 
 func (c *cluster) register() error {
-    ipAddress, err := utils.NodeIpAddress()
-    if err != nil {
-        return err
-    }
-
-    nodeData, err := proto.Marshal(&pb.Node{Uuid: c.Uuid(), IpAddress: ipAddress, Port: "5555"})
+    nodeData, err := proto.Marshal(&pb.Node{Uuid: c.Uuid(), IpAddress: c.config.Ip, Port: c.config.Port})
     if err != nil {
         return err
     }

@@ -4,7 +4,6 @@ package index
 import (
     "fmt";
     "io";
-    "sort";
     "time";
     "sync";
     "context";
@@ -216,7 +215,7 @@ func (index *btreeIndex) readTree(reader io.Reader) (*btreeNode, error) {
 // If query lies on one side of the plane but condition abs(distance) <= log(l2_length(query)) / 10
 // is true then other side of the plane is also considered with lower priority.
 // Traversal stops once there are numTrees * maxLeafItems candidates. 
-func (index *btreeIndex) Search(query math.Vector) SearchResult {
+func (index *btreeIndex) Search(ctx context.Context, query math.Vector) SearchResult {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
@@ -246,13 +245,12 @@ func (index *btreeIndex) Search(query math.Vector) SearchResult {
             }
         case <- time.After(1 * time.Second):
             break searchLoop
+        case <- ctx.Done():
+            return nil
         }
     }
 
-    result := newSearchResult(index, query, resultIds)
-    sort.Sort(result)
-
-    return result
+    return newSearchResult(index, query, resultIds)
 }
 
 func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx context.Context, results chan []int64, done chan struct{}) {

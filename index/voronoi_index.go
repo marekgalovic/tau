@@ -224,7 +224,7 @@ func (index *voronoiIndex) readCells(reader io.Reader) error {
 // If a difference of distance between nearest cell and other cells in a given
 // node is < 10% then other nodes are also considered with lower priority.
 // Traversal stops once there are int(splitFactor / 5) * maxCellItems candidates.
-func (index *voronoiIndex) Search(query math.Vector) SearchResult {
+func (index *voronoiIndex) Search(ctx context.Context, query math.Vector) SearchResult {
     kNearest := int(index.splitFactor / 5)
     maxResultCandidates := kNearest * index.maxCellItems
 
@@ -234,6 +234,11 @@ func (index *voronoiIndex) Search(query math.Vector) SearchResult {
     resultIds := utils.NewSet()
     searchLoop:
     for stack.Len() > 0 {
+        select {
+        case <-ctx.Done():
+            return nil
+        default:
+        }
         cell := stack.Pop().(*voronoiCell)
 
         if cell.isLeaf() {
@@ -259,10 +264,7 @@ func (index *voronoiIndex) Search(query math.Vector) SearchResult {
         stack.Push(cell.children[nearestCell.cellId])
     }
 
-    result := newSearchResult(index, query, resultIds)
-    sort.Sort(result)
-
-    return result
+    return newSearchResult(index, query, resultIds)
 }
 
 func (index *voronoiIndex) initialCell(ids []int64) *voronoiCell {

@@ -20,7 +20,7 @@ func main() {
     }
     defer zookeeper.Close()
 
-    cluster, err := cluster.NewCluster(zookeeper)
+    cluster, err := cluster.NewCluster(cluster.ClusterConfig{Ip: config.Server.Address, Port: config.Server.Port}, zookeeper)
     if err != nil {
         log.Fatal(err)
     }
