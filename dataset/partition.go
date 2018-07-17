@@ -150,9 +150,6 @@ func (p *partition) Unload() error {
 }
 
 func (p *partition) loadIndex() error {
-    p.log.WithFields(log.Fields{
-        "index_path": p.indexPath(),
-    }).Info("Load index")
     indexFile, err := p.storage.Reader(p.indexPath())
     if err != nil {
         return err
@@ -163,6 +160,10 @@ func (p *partition) loadIndex() error {
         return err
     }
 
+    p.log.WithFields(log.Fields{
+        "index_path": p.indexPath(),
+    }).Info("Index loaded")
+
     return nil
 }
 
@@ -172,10 +173,11 @@ func (p *partition) buildIndex() error {
     }
     defer p.zk.Delete(p.zkBuildLockPath())
 
-    p.log.Info("Build index")
     start := time.Now()
     p.index.Build(p.ctx)
-    p.log.Info("Index building done: %s", time.Since(start))
+    p.log.WithFields(log.Fields{
+        "duration": time.Since(start),
+    }).Info("Index built")
 
     indexFile, err := p.storage.Writer(p.indexPath())
     if err != nil {
@@ -191,8 +193,6 @@ func (p *partition) buildIndex() error {
 }
 
 func (p *partition) populateIndex() error {
-    p.log.Info("Populate index")
-
     for _, filePath := range p.Meta().GetFiles() {
         file, err := p.storage.Reader(filePath)
         if err != nil {
@@ -218,7 +218,9 @@ func (p *partition) populateIndex() error {
             }
         }
     }
-    p.log.Infof("Index populated. Items: %d", p.index.Len())
+    p.log.WithFields(log.Fields{
+        "items_count": p.index.Len(),
+    }).Info("Index populated")
 
     return nil
 }
@@ -232,10 +234,16 @@ func (p *partition) watchNodes() {
             switch event.Type {
             case utils.EventZkWatchInit, utils.EventZkNodeCreated:
                 p.nodes.Add(event.ZNode)
-                p.log.Infof("New partition node: `%s`", event.ZNode)
+
+                p.log.WithFields(log.Fields{
+                    "uuid": event.ZNode,
+                }).Infof("New partition node")
             case utils.EventZkNodeDeleted:
                 p.nodes.Remove(event.ZNode)
-                p.log.Infof("Removed partition node: `%s`", event.ZNode)
+
+                p.log.WithFields(log.Fields{
+                    "uuid": event.ZNode,
+                }).Infof("Partition node deleted")
             }
         case err := <-errors:
             panic(err)
