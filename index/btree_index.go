@@ -81,8 +81,11 @@ func (index *btreeIndex) Build(ctx context.Context) {
     }
 
     for i, treeChan := range treeChans {
-        index.trees[i] = <- treeChan
-        close(treeChan)
+        select {
+        case index.trees[i] = <- treeChan:
+            close(treeChan)
+        case <-ctx.Done():
+        }
     }
 }
 

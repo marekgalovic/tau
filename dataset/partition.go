@@ -6,6 +6,8 @@ import (
     "context";
     "crypto/sha256";
     "path/filepath";
+    "sort";
+    "strings";
     "sync";
     "time";
 
@@ -24,7 +26,7 @@ type Partition interface {
     Meta() *pb.DatasetPartition
     Index() index.Index
     GetNode() (cluster.Node, error)
-    Load() error
+    Load(context.Context) error
     Unload() error
 }
 
@@ -33,7 +35,6 @@ type partition struct {
     meta *pb.DatasetPartition
 
     ctx context.Context
-    loadCtx context.Context
     loadCancel context.CancelFunc
 
     config DatasetManagerConfig
@@ -88,10 +89,10 @@ func (p *partition) GetNode() (cluster.Node, error) {
     return p.cluster.GetNode(uuid.(string))
 }
 
-func (p *partition) Load() error {
-    p.loadCtx, p.loadCancel = context.WithCancel(p.ctx)
+func (p *partition) Load(ctx context.Context) error {
+    ctx, p.loadCancel = context.WithCancel(ctx)
 
-    if err := p.populateIndex(); err != nil {
+    if err := p.populateIndex(ctx); err != nil {
         return err
     }
 
@@ -102,7 +103,7 @@ func (p *partition) Load() error {
     }
 
     if indexExists {
-        if err := p.loadIndex(); err != nil {
+        if err := p.loadIndex(ctx); err != nil {
             return err
         }
         return p.registerNode()
@@ -122,7 +123,7 @@ func (p *partition) Load() error {
             }
 
             select {
-            case <-p.loadCtx.Done():
+            case <-ctx.Done():
                 return nil
             case e := <-event:
                 if e.Type == zk.EventNodeDeleted {
@@ -133,29 +134,30 @@ func (p *partition) Load() error {
         }
     }
 
-    if err := p.buildIndex(); err != nil {
+    if err := p.buildIndex(ctx); err != nil {
         return err
     }
     return p.registerNode()
 }
 
 func (p *partition) Unload() error {
-    defer p.indexMutex.Unlock()
-    p.indexMutex.Lock()
-
     if p.loadCancel == nil {
         return fmt.Errorf("Unoad called before load")
     }
     if err := p.unregisterNode(); err != nil {
         return err
     }
-    p.log.Info("Unload partition")
     p.loadCancel()
+
+    defer p.indexMutex.Unlock()
+    p.indexMutex.Lock()
     p.index.Reset()
+    
+    p.log.Info("Unload partition")
     return nil
 }
 
-func (p *partition) loadIndex() error {
+func (p *partition) loadIndex(ctx context.Context) error {
     indexFile, err := p.storage.Reader(p.indexPath())
     if err != nil {
         return err
@@ -175,7 +177,7 @@ func (p *partition) loadIndex() error {
     return nil
 }
 
-func (p *partition) buildIndex() error {
+func (p *partition) buildIndex(ctx context.Context) error {
     if _, err := p.zk.CreatePath(p.zkBuildLockPath(), nil, zk.FlagEphemeral); err != nil {
         return err
     }
@@ -183,8 +185,15 @@ func (p *partition) buildIndex() error {
 
     start := time.Now()
     p.indexMutex.Lock()
-    p.index.Build(p.ctx)
+    p.index.Build(ctx)
     p.indexMutex.Unlock()
+
+    select {
+    case <-ctx.Done():
+        return nil
+    default:
+    }
+
     p.log.WithFields(log.Fields{
         "duration": time.Since(start),
     }).Info("Index built")
@@ -202,10 +211,13 @@ func (p *partition) buildIndex() error {
     return nil
 }
 
-func (p *partition) populateIndex() error {
+func (p *partition) populateIndex(ctx context.Context) error {
     defer p.indexMutex.Unlock()
     p.indexMutex.Lock()
-    
+
+    p.log.WithFields(log.Fields{
+        "files": p.Meta().GetFiles(),
+    }).Info("Populate index.")
     for _, filePath := range p.Meta().GetFiles() {
         file, err := p.storage.Reader(filePath)
         if err != nil {
@@ -228,7 +240,7 @@ func (p *partition) populateIndex() error {
             p.index.Add(id, item)
 
             select {
-            case <- p.loadCtx.Done():
+            case <-ctx.Done():
                 return nil
             default:
             }
@@ -303,9 +315,13 @@ func (p *partition) indexPath() string {
 }
 
 func (p *partition) indexFilename() string {
-    hash := sha256.Sum256([]byte(fmt.Sprintf("%s.%d", p.datasetMeta.GetName(), p.Meta().GetId())))
+    partitionFiles := p.Meta().GetFiles()
+    sort.Stable(sort.StringSlice(partitionFiles))
 
-    return fmt.Sprintf("%x.ti", hash)
+    rawKey := fmt.Sprintf("%s.%d.%s", p.datasetMeta.GetName(), p.Meta().GetId(), strings.Join(partitionFiles, "."))
+    checkSum := sha256.Sum256([]byte(rawKey))
+
+    return fmt.Sprintf("%x.ti", checkSum)
 }
 
 func (p *partition) zkNodesPath() string {

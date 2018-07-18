@@ -1,7 +1,7 @@
 package main
 
 import (
-    "time";
+    // "time";
 
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/client";
@@ -29,25 +29,27 @@ func main() {
 
     printDatasets(client)
 
-    // client.DeleteDataset("dataset3")
+    // if err := client.DeleteDataset("random_1"); err != nil {
+    //     log.Fatal(err)
+    // }
     // log.Fatal()
 
-    start := time.Now()
-    for i := 0; i < 100; i++ {
-        _, err := client.Search("dataset3", 100, make([]float32, 256))
-        if err != nil{
-            log.Fatal(err)
-        }
-        log.Info("Result")
-        <-time.After(10 * time.Millisecond)
-    }
-    log.Infof("Search time: %s", time.Since(start))
+    // start := time.Now()
+    // for i := 0; i < 100; i++ {
+    //     _, err := client.Search("dataset3", 100, make([]float32, 256))
+    //     if err != nil{
+    //         log.Fatal(err)
+    //     }
+    //     log.Info("Result")
+    //     <-time.After(10 * time.Millisecond)
+    // }
+    // log.Infof("Search time: %s", time.Since(start))
 
-    name := "dataset3"
+    name := "random_1"
     d := &pb.Dataset {
         Name: name,
-        // Path: "./examples/data/random_*",
-        // NumPartitions: 1,
+        Path: "./examples/data/random/partition-*",
+        NumPartitions: 5,
         NumReplicas: 1,
         Index: &pb.Index {
             Size: 256,
@@ -64,18 +66,18 @@ func main() {
         },
     }
 
-    p := []*pb.DatasetPartition {
-        &pb.DatasetPartition{Id: 1, Files: []string{"./examples/data/random_normal.csv"}},
-        &pb.DatasetPartition{Id: 2, Files: []string{"./examples/data/random_normal.csv"}},
-        &pb.DatasetPartition{Id: 3, Files: []string{"./examples/data/random_normal.csv"}},
-        // &pb.DatasetPartition{Id: 4, Files: []string{"./examples/data/random_normal.csv"}},
-        // &pb.DatasetPartition{Id: 5, Files: []string{"./examples/data/random_normal.csv"}},
-    }
-
-    log.Info(p, d)
-    // if err := client.CreateDatasetWithPartitions(d, p); err != nil {
-    //     log.Fatal(err)
+    // p := []*pb.DatasetPartition {
+    //     &pb.DatasetPartition{Id: 1, Files: []string{"./examples/data/random_normal.csv"}},
+    //     &pb.DatasetPartition{Id: 2, Files: []string{"./examples/data/random_normal.csv"}},
+    //     &pb.DatasetPartition{Id: 3, Files: []string{"./examples/data/random_normal.csv"}},
+    //     // &pb.DatasetPartition{Id: 4, Files: []string{"./examples/data/random_normal.csv"}},
+    //     // &pb.DatasetPartition{Id: 5, Files: []string{"./examples/data/random_normal.csv"}},
     // }
+
+    // log.Info(p, d)
+    if err := client.CreateDataset(d); err != nil {
+        log.Fatal(err)
+    }
 
     // printDatasets(client)
 

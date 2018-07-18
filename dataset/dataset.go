@@ -53,7 +53,7 @@ func newDatasetFromProto(meta *pb.Dataset, ctx context.Context, config DatasetMa
     }
 
     if err := d.loadPartitions(); err != nil {
-        return nil, err
+        return nil, fmt.Errorf("Failed to load dataset partitions. Err: %s", err)
     }
 
     return d, nil
@@ -211,9 +211,12 @@ func (d *dataset) BuildPartitions(updatedPartitions utils.Set) error {
     }
     d.localPartitions = d.localPartitions.Union(updatedPartitions)
 
+    ctx, cancel := context.WithCancel(d.ctx)
+    defer cancel()
+
     errors := make(chan error)
     for _, partitionId := range newPartitions.ToSlice() {
-        go d.loadPartition(partitionId.(string), errors)
+        go d.loadPartition(ctx, partitionId.(string), errors)
     }
 
     return utils.WaitUntilAllSuccessful(d.ctx, newPartitions.Len(), errors)
@@ -239,10 +242,10 @@ func (d *dataset) DeleteAllPartitions() error {
     return utils.WaitUntilAllSuccessful(d.ctx, d.localPartitions.Len(), errors)
 }
 
-func (d *dataset) loadPartition(partitionId string, errors chan error) {
+func (d *dataset) loadPartition(ctx context.Context, partitionId string, errors chan error) {
     partition := d.partitions[partitionId]
 
-    errors <- partition.Load()
+    errors <- partition.Load(ctx)
 }
 
 func (d *dataset) unloadPartition(partitionId string, errors chan error) {

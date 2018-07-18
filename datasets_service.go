@@ -14,6 +14,8 @@ import (
 
     "github.com/samuel/go-zookeeper/zk";
     "github.com/golang/protobuf/proto";
+
+    log "github.com/Sirupsen/logrus"
 )
 
 type datasetsService struct {
@@ -94,6 +96,8 @@ func (service *datasetsService) CreateWithPartitions(ctx context.Context, req *p
     }
 
     for _, partition := range partitionProtos {
+        log.Infof("Partition: %d, files: %s", partition.GetId(), partition.GetFiles())
+
         partitionData, err := proto.Marshal(partition)
         if err != nil {
             return nil, err
@@ -194,8 +198,10 @@ func (service *datasetsService) computeDatasetPartitions(dataset *pb.Dataset) ([
         return nil, errors.New("Number of partitions is greater than the number of files")
     }
 
+    log.Infof("Num partitions: %d", numPartitions)
+
     partitions := make([]*pb.DatasetPartition, numPartitions)
-    numFilesPerPartition := numPartitions / len(files)
+    numFilesPerPartition := len(files) / numPartitions
     for i := 0; i < numPartitions; i++ {
         lbIdx := i * numFilesPerPartition
         ubIdx := i * numFilesPerPartition + numFilesPerPartition

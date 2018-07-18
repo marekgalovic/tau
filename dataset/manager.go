@@ -281,6 +281,7 @@ func (m *manager) datasetCreated(dataset Dataset) {
 
 func (m *manager) datasetDeleted(dataset Dataset) {
     if m.localDatasets.Contains(dataset.Meta().GetName()) {
+        m.localDatasets.Remove(dataset.Meta().GetName())
         if err := dataset.DeleteAllPartitions(); err != nil {
             log.Errorf("Failed to delete dataset. Err: %v", err)
             return
@@ -289,7 +290,6 @@ func (m *manager) datasetDeleted(dataset Dataset) {
         log.WithFields(log.Fields{
             "dataset_name": dataset.Meta().GetName(),
         }).Info("Delete local")
-        m.localDatasets.Remove(dataset.Meta().GetName())
     }
 }
 

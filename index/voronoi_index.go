@@ -81,13 +81,19 @@ func (index *voronoiIndex) Build(ctx context.Context) {
 
     for stack.Len() > 0 {
         parent := stack.Pop().(*voronoiCell)
-
         if len(parent.itemIds) <= index.maxCellItems {
             continue
         }
 
         initialCells := index.initializeCells(ctx, parent, index.splitFactor)
+        if initialCells == nil {
+            return
+        }
+        
         parent.children = index.kMeans(ctx, parent, initialCells)
+        if parent.children == nil {
+            return
+        }
         parent.itemIds = nil
 
         for _, child := range parent.children {
@@ -320,6 +326,11 @@ func (index *voronoiIndex) kMeans(ctx context.Context, parent *voronoiCell, cell
 
         var cost float32
         for icDistance := range index.itemCellDistances(parent.itemIds, cells) {
+            select {
+            case <-ctx.Done():
+                return nil
+            default:
+            }
             cells[icDistance.cellId].cost += icDistance.distance
             cells[icDistance.cellId].itemIds = append(cells[icDistance.cellId].itemIds, icDistance.itemId)
             newCentroids[icDistance.cellId] = math.VectorAdd(newCentroids[icDistance.cellId], index.Get(icDistance.itemId))
@@ -328,6 +339,11 @@ func (index *voronoiIndex) kMeans(ctx context.Context, parent *voronoiCell, cell
         }
 
         for cellId, centroid := range newCentroids {
+            select {
+            case <-ctx.Done():
+                return nil
+            default:
+            }
             cells[cellId].centroid = math.VectorScalarDivide(centroid, float32(len(cells[cellId].itemIds)))
         }
 
@@ -335,12 +351,6 @@ func (index *voronoiIndex) kMeans(ctx context.Context, parent *voronoiCell, cell
             break
         }
         previousCost = cost
-
-        select {
-        case <-ctx.Done():
-            return nil
-        default:
-        }
     }
 
     return cells
