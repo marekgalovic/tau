@@ -166,6 +166,9 @@ func (c *cluster) watchNodes() {
                 })
             }
         case err := <-errors:
+            if (err == zk.ErrClosing) || (err == zk.ErrConnectionClosed) {
+                return
+            }
             if err != nil {
                 panic(err)
             }

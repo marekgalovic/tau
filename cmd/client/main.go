@@ -1,7 +1,7 @@
 package main
 
 import (
-    // "time";
+    "time";
 
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/client";
@@ -29,19 +29,19 @@ func main() {
 
     printDatasets(client)
 
-    client.DeleteDataset("dataset3")
-    log.Fatal()
+    // client.DeleteDataset("dataset3")
+    // log.Fatal()
 
-    // start := time.Now()
-    // for i := 0; i < 100; i++ {
-    //     _, err := client.Search("dataset3", 100, make([]float32, 256))
-    //     if err != nil{
-    //         log.Fatal(err)
-    //     }
-    //     log.Info("Result")
-    //     <-time.After(10 * time.Millisecond)
-    // }
-    // log.Infof("Search time: %s", time.Since(start))
+    start := time.Now()
+    for i := 0; i < 100; i++ {
+        _, err := client.Search("dataset3", 100, make([]float32, 256))
+        if err != nil{
+            log.Fatal(err)
+        }
+        log.Info("Result")
+        <-time.After(10 * time.Millisecond)
+    }
+    log.Infof("Search time: %s", time.Since(start))
 
     name := "dataset3"
     d := &pb.Dataset {
@@ -73,9 +73,9 @@ func main() {
     }
 
     log.Info(p, d)
-    if err := client.CreateDatasetWithPartitions(d, p); err != nil {
-        log.Fatal(err)
-    }
+    // if err := client.CreateDatasetWithPartitions(d, p); err != nil {
+    //     log.Fatal(err)
+    // }
 
     // printDatasets(client)
 

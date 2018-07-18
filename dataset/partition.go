@@ -6,6 +6,7 @@ import (
     "context";
     "crypto/sha256";
     "path/filepath";
+    "sync";
     "time";
 
     "github.com/marekgalovic/tau/index";
@@ -41,6 +42,7 @@ type partition struct {
     storage storage.Storage
 
     index index.Index
+    indexMutex *sync.Mutex
     nodes utils.Set
 
     log *log.Entry
@@ -56,6 +58,7 @@ func newPartitionFromProto(datasetMeta *pb.Dataset, meta *pb.DatasetPartition, c
         cluster: cluster,
         storage: storage,
         index: index.FromProto(datasetMeta.GetIndex()),
+        indexMutex: &sync.Mutex{},
         nodes: utils.NewThreadSafeSet(),
         log: log.WithFields(log.Fields{
             "dataset_name": datasetMeta.GetName(),
@@ -137,6 +140,9 @@ func (p *partition) Load() error {
 }
 
 func (p *partition) Unload() error {
+    defer p.indexMutex.Unlock()
+    p.indexMutex.Lock()
+
     if p.loadCancel == nil {
         return fmt.Errorf("Unoad called before load")
     }
@@ -156,6 +162,8 @@ func (p *partition) loadIndex() error {
     }
     defer indexFile.Close()
 
+    defer p.indexMutex.Unlock()
+    p.indexMutex.Lock()
     if err := p.index.Load(indexFile); err != nil {
         return err
     }
@@ -174,7 +182,9 @@ func (p *partition) buildIndex() error {
     defer p.zk.Delete(p.zkBuildLockPath())
 
     start := time.Now()
+    p.indexMutex.Lock()
     p.index.Build(p.ctx)
+    p.indexMutex.Unlock()
     p.log.WithFields(log.Fields{
         "duration": time.Since(start),
     }).Info("Index built")
@@ -193,6 +203,9 @@ func (p *partition) buildIndex() error {
 }
 
 func (p *partition) populateIndex() error {
+    defer p.indexMutex.Unlock()
+    p.indexMutex.Lock()
+    
     for _, filePath := range p.Meta().GetFiles() {
         file, err := p.storage.Reader(filePath)
         if err != nil {
@@ -259,6 +272,9 @@ func (p *partition) watchNodes() {
                 if !exists {
                     return
                 }
+            }
+            if (err == zk.ErrClosing) || (err == zk.ErrConnectionClosed) {
+                return
             }
             if err != nil {
                 panic(err)
