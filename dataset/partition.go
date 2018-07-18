@@ -200,9 +200,12 @@ func (p *partition) populateIndex() error {
         }
         defer file.Close()
 
-        csv := serde.NewCsvReader(file)
+        reader, err := serde.NewReaderFromProto(p.datasetMeta.GetFormat(), file)
+        if err != nil {
+            return err
+        }
         for {
-            id, item, err := csv.ReadItem()
+            id, item, err := reader.ReadItem()
             if err == io.EOF {
                 break
             }
@@ -248,6 +251,15 @@ func (p *partition) watchNodes() {
                 }).Infof("Partition node deleted")
             }
         case err := <-errors:
+            if err == zk.ErrNoNode {
+                exists, err := p.zk.Exists(filepath.Join(ZkDatasetsPath, p.datasetMeta.GetName()))
+                if err != nil {
+                    panic(err)
+                }
+                if !exists {
+                    return
+                }
+            }
             if err != nil {
                 panic(err)
             }
