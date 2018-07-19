@@ -12,6 +12,7 @@ type Set interface {
     Add(interface{})
     Remove(interface{})
     Contains(interface{}) bool
+    Equal(Set) bool
     Difference(Set) Set
     Union(Set) Set
     ToIterator() <-chan interface{}
@@ -54,6 +55,22 @@ func (s *baseSet) Remove(element interface{}) {
 func(s *baseSet) Contains(element interface{}) bool {
     _, exists := (*s)[element]
     return exists
+}
+
+func (s *baseSet) Equal(other Set) bool {
+    o := other.(*baseSet)
+
+    if s.Len() != o.Len() {
+        return false
+    }
+
+    for element, _ := range *s {
+        if !o.Contains(element) {
+            return false
+        }
+    }
+
+    return true
 }
 
 func (s *baseSet) Difference(other Set) Set {
@@ -165,6 +182,13 @@ func (s *threadSafeSet) Contains(element interface{}) bool {
     s.mutex.Lock()
 
     return s.baseSet.Contains(element)
+}
+
+func (s *threadSafeSet) Equal(other Set) bool {
+    defer s.mutex.Unlock()
+    s.mutex.Lock()
+
+    return s.baseSet.Equal(other)
 }
 
 func (s *threadSafeSet) Difference(other Set) Set {
