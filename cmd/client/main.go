@@ -29,10 +29,10 @@ func main() {
 
     printDatasets(client)
 
-    // if err := client.DeleteDataset("random_1"); err != nil {
-    //     log.Fatal(err)
-    // }
-    // log.Fatal()
+    if err := client.DeleteDataset("random_1"); err != nil {
+        log.Fatal(err)
+    }
+    log.Fatal()
 
     // start := time.Now()
     // for i := 0; i < 100; i++ {
@@ -54,10 +54,10 @@ func main() {
         Index: &pb.Index {
             Size: 256,
             Metric: "Euclidean",
-            Options: &pb.Index_Voronoi {
-                Voronoi: &pb.VoronoiIndexOptions {
-                    SplitFactor: 10,
-                    MaxCellItems: 512,
+            Options: &pb.Index_Btree {
+                Btree: &pb.BtreeIndexOptions {
+                    NumTrees: 15,
+                    MaxLeafItems: 1024,
                 },
             },
         },

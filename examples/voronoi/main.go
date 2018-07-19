@@ -1,6 +1,7 @@
 package main
 
 import (
+    "context";
     "fmt";
     "time";
     "sort";
@@ -12,7 +13,9 @@ import (
     goMath "math";
     "runtime/pprof";
 
-    "github.com/marekgalovic/tau";
+    // "github.com/marekgalovic/tau";
+    "github.com/marekgalovic/tau/index";
+    pb "github.com/marekgalovic/tau/protobuf";
     tauMath "github.com/marekgalovic/tau/math"
 )
 
@@ -29,10 +32,10 @@ func main() {
     // n := 100
     rand.Seed(time.Now().Unix())
     fmt.Println("Tau")
-    index := tau.VoronoiIndex(d, "Euclidean", 10, 1024)
+    vorIndex := index.NewVoronoiIndex(d, "Euclidean", 30, 512)
 
     startAt := time.Now()
-    f, err = os.Open("./examples/data/dim256.txt")
+    f, err = os.Open("./examples/data/random_normal.csv")
     if err != nil {
         panic(err)
     }
@@ -44,44 +47,44 @@ func main() {
             break
         }
 
-        vec := make([]tauMath.Float, 256)
-        for i, b := range bytes.Fields(lineBytes) {
+        vec := make([]float32, 256)
+        for i, b := range bytes.Fields(lineBytes)[1:] {
             f, _ := strconv.ParseFloat(string(b), 64)
-            vec[i] = tauMath.Float(f)
+            vec[i] = float32(f)
             if goMath.IsNaN(f) {
                 panic("NaN")
             }
         }
-        for k := 0; k < 100; k++ {
-            // index.Add(itemIdx, vec)
-            index.Add(itemIdx, tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
+        for k := 0; k < 1; k++ {
+            // vorIndex.Add(itemIdx, vec)
+            vorIndex.Add(int64(itemIdx), tauMath.VectorAdd(vec, tauMath.RandomStandardNormalVector(d)))
             itemIdx++
         }
-        // fmt.Println("Index size:", index.ByteSize() / 1024 / 1024)
+        // fmt.Println("vorIndex size:", vorIndex.ByteSize() / 1024 / 1024)
     }
     fmt.Println("Data read time:", time.Since(startAt))
-    fmt.Println("Item:", index.Len())
+    fmt.Println("Item:", vorIndex.Len())
 
     var totalDuration time.Duration
     for i := 0; i < 1; i++ {
         startAt = time.Now()
-        index.Build()
+        vorIndex.Build(context.Background())
         d := time.Since(startAt)
-        // fmt.Println("Build time:", index.Len(), d)
+        // fmt.Println("Build time:", vorIndex.Len(), d)
         totalDuration += d
     }
     fmt.Println("Avg build duration", totalDuration / 1)
 
-    query := index.Get(0)
+    query := vorIndex.Get(0)
 
     startAt = time.Now()
-    bfResults := make(tau.SearchResult, 0, index.Len())
-    for idx, item := range index.Items() {
+    bfResults := make(index.SearchResult, 0, vorIndex.Len())
+    for idx, item := range vorIndex.Items() {
         distance := tauMath.EuclideanDistance(item, query)
         if idx == 0 {
             fmt.Println(idx, distance)
         }
-        bfResults = append(bfResults, tau.SearchResultItem {
+        bfResults = append(bfResults, &pb.SearchResultItem {
             Id: idx,
             Distance: distance,
         })
@@ -90,18 +93,19 @@ func main() {
     fmt.Println("Brute force search time", time.Since(startAt))
 
     var totalSearchDuration time.Duration
-    var result tau.SearchResult
+    var result index.SearchResult
     for i := 0; i < 1000; i++ {
         startAt = time.Now()
-        result = index.Search(query)
+        result = vorIndex.Search(context.Background(), query)
         d := time.Since(startAt)
         // fmt.Println("Btree search time:", d)
         totalSearchDuration += d
+        sort.Sort(result)
     }
     fmt.Println("Avg search time:", totalSearchDuration / 1000)
     fmt.Println("Returned results:", len(result))
 
-    topTenBtreeIds := make(map[int]struct{})
+    topTenBtreeIds := make(map[int64]struct{})
     for i := 0; i < 10; i++ {
         if i < len(result) {
             topTenBtreeIds[result[i].Id] = struct{}{}
@@ -119,5 +123,5 @@ func main() {
     fmt.Println(bfResults[:10])
     fmt.Println(topTenBtreeIds)
 
-    // index.Save("foo")
+    // vorIndex.Save("foo")
 }

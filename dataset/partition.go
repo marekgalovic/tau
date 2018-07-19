@@ -10,6 +10,7 @@ import (
     "strings";
     "sync";
     "time";
+    "errors";
 
     "github.com/marekgalovic/tau/index";
     "github.com/marekgalovic/tau/cluster";
@@ -21,6 +22,8 @@ import (
     "github.com/samuel/go-zookeeper/zk";
     log "github.com/Sirupsen/logrus";
 )
+
+var ErrOpCancelled error = errors.New("Operation cancelled")
 
 type Partition interface {
     Meta() *pb.DatasetPartition
@@ -92,7 +95,11 @@ func (p *partition) GetNode() (cluster.Node, error) {
 func (p *partition) Load(ctx context.Context) error {
     ctx, p.loadCancel = context.WithCancel(ctx)
 
-    if err := p.populateIndex(ctx); err != nil {
+    err := p.populateIndex(ctx)
+    if err == ErrOpCancelled {
+        return nil
+    }
+    if err != nil {
         return err
     }
 
@@ -103,7 +110,11 @@ func (p *partition) Load(ctx context.Context) error {
     }
 
     if indexExists {
-        if err := p.loadIndex(ctx); err != nil {
+        err := p.loadIndex(ctx)
+        if err == ErrOpCancelled {
+            return nil
+        }
+        if err != nil {
             return err
         }
         return p.registerNode()
@@ -134,7 +145,11 @@ func (p *partition) Load(ctx context.Context) error {
         }
     }
 
-    if err := p.buildIndex(ctx); err != nil {
+    err = p.buildIndex(ctx)
+    if err == ErrOpCancelled {
+        return nil
+    }
+    if err != nil {
         return err
     }
     return p.registerNode()
@@ -170,6 +185,12 @@ func (p *partition) loadIndex(ctx context.Context) error {
         return err
     }
 
+    select {
+    case <-ctx.Done():
+        return ErrOpCancelled
+    default:
+    }
+
     p.log.WithFields(log.Fields{
         "index_path": p.indexPath(),
     }).Info("Index loaded")
@@ -178,6 +199,7 @@ func (p *partition) loadIndex(ctx context.Context) error {
 }
 
 func (p *partition) buildIndex(ctx context.Context) error {
+    p.log.Info("Build index")
     if _, err := p.zk.CreatePath(p.zkBuildLockPath(), nil, zk.FlagEphemeral); err != nil {
         return err
     }
@@ -190,7 +212,7 @@ func (p *partition) buildIndex(ctx context.Context) error {
 
     select {
     case <-ctx.Done():
-        return nil
+        return ErrOpCancelled
     default:
     }
 
@@ -241,7 +263,7 @@ func (p *partition) populateIndex(ctx context.Context) error {
 
             select {
             case <-ctx.Done():
-                return nil
+                return ErrOpCancelled
             default:
             }
         }
