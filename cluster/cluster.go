@@ -1,6 +1,7 @@
 package cluster
 
 import (
+    "fmt";
     "context";
     "sync";
     "path/filepath";
@@ -28,6 +29,7 @@ type NodesChangedNotification struct {
 }
 
 type ClusterConfig struct {
+    Uuid string
     Ip string
     Port string
 }
@@ -43,7 +45,6 @@ type Cluster interface {
 }
 
 type cluster struct {
-    uuid string
     ctx context.Context
     cancel context.CancelFunc
     config ClusterConfig
@@ -60,14 +61,8 @@ type cluster struct {
 }
 
 func NewCluster(config ClusterConfig, zk utils.Zookeeper) (Cluster, error) {
-    uuid, err := utils.VolatileNodeUuid()
-    if err != nil {
-        return nil, err
-    }
-
     ctx, cancel := context.WithCancel(context.Background())
     c := &cluster {
-        uuid: uuid,
         ctx: ctx,
         cancel: cancel,
         config: config,
@@ -78,15 +73,15 @@ func NewCluster(config ClusterConfig, zk utils.Zookeeper) (Cluster, error) {
         connCache: make(map[string]*grpc.ClientConn),
         connCacheMutex: &sync.Mutex{},
         log: log.WithFields(log.Fields{
-            "local_uuid": uuid,
+            "local_uuid": config.Uuid,
         }),
     }
 
     if err := c.bootstrapZk(); err != nil {
-        return nil, err
+        return nil, fmt.Errorf("Failed to bootstrap Zookeeper. %v", err)
     }
     if err := c.register(); err != nil {
-        return nil, err
+        return nil, fmt.Errorf("Failed to register Zookeeper node. %v", err)
     }
 
     go c.watchNodes()
@@ -132,6 +127,9 @@ func (c *cluster) watchNodes() {
             switch event.Type {
             case utils.EventZkWatchInit, utils.EventZkNodeCreated:
                 node, err := c.GetNode(event.ZNode)
+                if (err == zk.ErrClosing) || (err == zk.ErrConnectionClosed) {
+                    return
+                }
                 if err != nil {
                     panic(err)
                 }
@@ -189,7 +187,7 @@ func (c *cluster) Close() {
 }
 
 func (c *cluster) Uuid() string {
-    return c.uuid
+    return c.config.Uuid
 }
 
 func (c *cluster) ListNodes() ([]Node, error) {

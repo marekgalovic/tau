@@ -12,7 +12,10 @@ import (
 
 func main() {
     config := tau.NewConfig()
-    // config.Server.Port = "5556"
+    uuid, err := utils.VolatileNodeUuid()
+    if err != nil {
+        log.Fatal(err)
+    }
 
     zookeeper, err := utils.NewZookeeper(config.Zookeeper)
     if err != nil {
@@ -20,7 +23,7 @@ func main() {
     }
     defer zookeeper.Close()
 
-    cluster, err := cluster.NewCluster(cluster.ClusterConfig{Ip: config.Server.Address, Port: config.Server.Port}, zookeeper)
+    cluster, err := cluster.NewCluster(cluster.ClusterConfig{Uuid: uuid, Ip: config.Server.Address, Port: config.Server.Port}, zookeeper)
     if err != nil {
         log.Fatal(err)
     }

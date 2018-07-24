@@ -63,16 +63,20 @@ type zookeeper struct {
     conn *zk.Conn   
 }
 
-func NewZookeeper(config ZookeeperConfig) (*zookeeper, error) {
+func NewZookeeper(config ZookeeperConfig) (Zookeeper, error) {
     conn, _, err := zk.Connect(config.Nodes, config.Timeout)
     if err != nil {
         return nil, err
     }
 
+    return NewZookeeperFromConn(conn, config)
+}
+
+func NewZookeeperFromConn(conn *zk.Conn, config ZookeeperConfig) (Zookeeper, error) {
     return &zookeeper {
         config: config,
         conn: conn,
-    }, nil 
+    }, nil
 }
 
 func (z *zookeeper) Close() {
@@ -169,7 +173,7 @@ func (z *zookeeper) CreatePath(path string, data []byte, flags int32) (string, e
             continue
         }
 
-        request := &zk.CreateRequest{Path: partialPath, Data: nil, Flags: int32(0), Acl: zk.WorldACL(zk.PermAll )}
+        request := &zk.CreateRequest{Path: partialPath, Data: nil, Flags: int32(0), Acl: zk.WorldACL(zk.PermAll)}
         if i == len(pathParts){
             request.Data = data
             request.Flags = flags
