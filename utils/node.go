@@ -12,7 +12,10 @@ import (
 
 
 func VolatileNodeUuid() (string, error) {
-    uuid := uuid.NewV1()
+    uuid, err := uuid.NewV1()
+    if err != nil {
+        return "", err
+    }
     uuidBytes, err := uuid.MarshalText()
     if err != nil {
         return "", err
@@ -33,7 +36,9 @@ func NodeUuid() (string, error) {
             return "", err
         }
 
-        uuid := uuid.NewV1()
+        uuid, err := uuid.NewV1()
+        if err != nil {
+            return "", err        }
         uuidBytes, err := uuid.MarshalText()
         if err != nil {
             return "", err

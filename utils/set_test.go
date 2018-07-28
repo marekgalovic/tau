@@ -24,7 +24,7 @@ func TestSetAdd(t *testing.T) {
     s := NewSet()
 
     assert.Equal(t, s.Len(), 0)
-
+    
     s.Add("foo")
     s.Add("bar")
 

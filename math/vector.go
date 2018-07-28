@@ -19,12 +19,10 @@ func (v Vector) Sort() Vector {
     return v
 }
 
-func VectorFromSlice(slice []float32) Vector {
-    vector := make(Vector, len(slice))
-    for i, element := range slice {
-        vector[i] = float32(element)
-    }
-    return vector
+func assertSameDim(i, j *Vector) {
+    if len(*i) != len(*j) {
+        panic("Vector sizes do not match.")
+    }   
 }
 
 func VectorFromBytes(bytesSlice [][]byte) (Vector, error) {
