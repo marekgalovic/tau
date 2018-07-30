@@ -13,6 +13,7 @@ type Set interface {
     Remove(interface{})
     Contains(interface{}) bool
     Equal(Set) bool
+    Intersection(Set) Set
     Difference(Set) Set
     Union(Set) Set
     ToIterator() <-chan interface{}
@@ -71,6 +72,18 @@ func (s *baseSet) Equal(other Set) bool {
     }
 
     return true
+}
+
+func (s *baseSet) Intersection(other Set) Set {
+    result := make(baseSet)
+
+    for element, _ := range *s {
+        if other.Contains(element) {
+            result.Add(element)
+        }
+    }
+
+    return &result
 }
 
 func (s *baseSet) Difference(other Set) Set {
