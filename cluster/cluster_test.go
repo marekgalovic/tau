@@ -18,7 +18,11 @@ type ClusterTestSuite struct {
 }
 
 func (suite *ClusterTestSuite) SetupTest() {
-    basePath, err := uuid.NewV4().MarshalText()
+    randId, err := uuid.NewV4()
+    if err != nil {
+        suite.Fail(fmt.Sprintf("%s", err))
+    }
+    basePath, err := randId.MarshalText()
     if err != nil {
         suite.Fail(fmt.Sprintf("%s", err))
     }

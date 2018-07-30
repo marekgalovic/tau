@@ -205,6 +205,20 @@ func (s *threadSafeSet) Union(other Set) Set {
     return s.baseSet.Union(other)
 }
 
+func (s *threadSafeSet) ToIterator() <-chan interface{} {
+    returnChan := make(chan interface{})
+    go func() {
+        defer s.mutex.Unlock()
+        s.mutex.Lock()
+
+        for element, _ := range s.baseSet {
+            returnChan <- element
+        }
+        close(returnChan)
+    }()
+    return returnChan
+}
+
 func (s *threadSafeSet) ToSlice() []interface{} {
     defer s.mutex.Unlock()
     s.mutex.Lock()

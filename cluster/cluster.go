@@ -42,6 +42,7 @@ type Cluster interface {
     GetHrwNode(string) (Node, error)
     GetTopHrwNodes(int, string) (utils.Set, error)
     NodeChanges() <-chan interface{}
+    DialNode(string) (*grpc.ClientConn, error)
 }
 
 type cluster struct {
@@ -240,7 +241,7 @@ func (c *cluster) NodeChanges() <-chan interface{} {
     return c.nodeChangesNotifications.Listen(10)
 }
 
-func (c *cluster) dialNode(uuid string) (*grpc.ClientConn, error) {
+func (c *cluster) DialNode(uuid string) (*grpc.ClientConn, error) {
     c.connCacheMutex.Lock()
     conn, exists := c.connCache[uuid]
     c.connCacheMutex.Unlock()

@@ -16,10 +16,10 @@ type Node interface {
 
 type node struct {
     meta *pb.Node
-    cluster *cluster
+    cluster Cluster
 }
 
-func NewNode(meta *pb.Node, cluster *cluster) Node {
+func NewNode(meta *pb.Node, cluster Cluster) Node {
     return &node {
         meta: meta,
         cluster: cluster,
@@ -35,5 +35,5 @@ func (n *node) Address() string {
 }
 
 func (n *node) Dial() (*grpc.ClientConn, error) {
-    return n.cluster.dialNode(n.Meta().GetUuid())
+    return n.cluster.DialNode(n.Meta().GetUuid())
 }
