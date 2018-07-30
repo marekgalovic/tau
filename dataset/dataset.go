@@ -40,7 +40,7 @@ type dataset struct {
     localPartitions utils.Set
 }
 
-func newDatasetFromProto(meta *pb.Dataset, ctx context.Context, config DatasetManagerConfig, zk utils.Zookeeper, cluster cluster.Cluster, storage storage.Storage) (Dataset, error) {
+func newDatasetFromProto(meta *pb.Dataset, ctx context.Context, config DatasetManagerConfig, zk utils.Zookeeper, cluster cluster.Cluster, storage storage.Storage) (*dataset, error) {
     d := &dataset {
         ctx: ctx,
         config: config,

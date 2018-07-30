@@ -53,7 +53,7 @@ type manager struct {
     localDatasets utils.Set
 }
 
-func NewManager(config DatasetManagerConfig, zk utils.Zookeeper, cluster cluster.Cluster, storage storage.Storage) (Manager, error) {
+func NewManager(config DatasetManagerConfig, zk utils.Zookeeper, cluster cluster.Cluster, storage storage.Storage) (*manager, error) {
     ctx, cancel := context.WithCancel(context.Background())
 
     m := &manager {

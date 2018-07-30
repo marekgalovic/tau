@@ -19,7 +19,7 @@ type ManagerTestSuite struct {
     zk *utils.MockZookeeper
     cluster *cluster.MockCluster
     storage *storage.MockStorage
-    manager Manager
+    manager *manager
 }
 
 func (suite *ManagerTestSuite) SetupTest() {
@@ -46,13 +46,13 @@ func (suite *ManagerTestSuite) TestDatasetsCacheMethods() {
     suite.Nil(d)
     suite.False(exists)
 
-    suite.manager.(*manager).addDataset(&dataset{meta: &pb.Dataset{Name: "foo"}})
+    suite.manager.addDataset(&dataset{meta: &pb.Dataset{Name: "foo"}})
 
     d, exists = suite.manager.GetDataset("foo")
     suite.NotNil(d)
     suite.True(exists)
 
-    suite.manager.(*manager).deleteDataset("foo")
+    suite.manager.deleteDataset("foo")
 
     d, exists = suite.manager.GetDataset("foo")
     suite.Nil(d)
@@ -60,30 +60,28 @@ func (suite *ManagerTestSuite) TestDatasetsCacheMethods() {
 }
 
 func (suite *ManagerTestSuite) TestNodeCreated() {
-    manager := suite.manager.(*manager)
     d := NewMockDataset(suite.mockController)
     dPb := &pb.Dataset{Name: "foo", NumReplicas: 1}
     d.EXPECT().Meta().Return(dPb)
     d.EXPECT().LocalPartitions().Return([]interface{}{"1"})
-    manager.addDataset(d)
-    manager.localDatasets.Add("foo")
+    suite.manager.addDataset(d)
+    suite.manager.localDatasets.Add("foo")
 
     d.EXPECT().Meta().Return(dPb)
     d.EXPECT().Meta().Return(dPb)
     suite.cluster.EXPECT().Uuid().Return("node1")
     suite.cluster.EXPECT().GetTopHrwNodes(1, "foo.1").Return(utils.NewSet("node1"), nil)
 
-    manager.nodeCreated(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
+    suite.manager.nodeCreated(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
 }
 
 func (suite *ManagerTestSuite) TestNodeCreatedReleasesPartitions() {
-    manager := suite.manager.(*manager)
     d := NewMockDataset(suite.mockController)
     dPb := &pb.Dataset{Name: "foo", NumReplicas: 1}
     d.EXPECT().Meta().Return(dPb)
     d.EXPECT().LocalPartitions().Return([]interface{}{"1"})
-    manager.addDataset(d)
-    manager.localDatasets.Add("foo")
+    suite.manager.addDataset(d)
+    suite.manager.localDatasets.Add("foo")
 
     d.EXPECT().Meta().Return(dPb)
     d.EXPECT().Meta().Return(dPb)
@@ -92,15 +90,14 @@ func (suite *ManagerTestSuite) TestNodeCreatedReleasesPartitions() {
 
     d.EXPECT().DeletePartitions(utils.NewSet("1"))
 
-    manager.nodeCreated(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
+    suite.manager.nodeCreated(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
 }
 
 func (suite *ManagerTestSuite) TestNodeDeleted() {
-    manager := suite.manager.(*manager)
     d := NewMockDataset(suite.mockController)
     dPb := &pb.Dataset{Name: "foo", NumReplicas: 1}
     d.EXPECT().Meta().Return(dPb)
-    manager.addDataset(d)
+    suite.manager.addDataset(d)
 
     suite.zk.EXPECT().Children("datasets").Return([]string{"foo"}, nil)
     suite.zk.EXPECT().Children("datasets/foo/partitions").Return([]string{"1"}, nil)
@@ -109,15 +106,14 @@ func (suite *ManagerTestSuite) TestNodeDeleted() {
     suite.cluster.EXPECT().Uuid().Return("node1")
     suite.cluster.EXPECT().GetTopHrwNodes(1, "foo.1").Return(utils.NewSet("node3"), nil)
 
-    manager.nodeDeleted(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
+    suite.manager.nodeDeleted(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
 }
 
 func (suite *ManagerTestSuite) TestNodeDeletedAcquiresPartitionOwnership() {
-    manager := suite.manager.(*manager)
     d := NewMockDataset(suite.mockController)
     dPb := &pb.Dataset{Name: "foo", NumReplicas: 1}
     d.EXPECT().Meta().Return(dPb)
-    manager.addDataset(d)
+    suite.manager.addDataset(d)
 
     suite.zk.EXPECT().Children("datasets").Return([]string{"foo"}, nil)
     suite.zk.EXPECT().Children("datasets/foo/partitions").Return([]string{"1"}, nil)
@@ -129,11 +125,10 @@ func (suite *ManagerTestSuite) TestNodeDeletedAcquiresPartitionOwnership() {
     d.EXPECT().Meta().Return(dPb)
     d.EXPECT().BuildPartitions(utils.NewSet("1"))
 
-    manager.nodeDeleted(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
+    suite.manager.nodeDeleted(cluster.NewNode(&pb.Node{Uuid: "node2"}, suite.cluster))
 }
 
 func (suite *ManagerTestSuite) TestDatasetCreated() {
-    manager := suite.manager.(*manager)
     d := NewMockDataset(suite.mockController)
     dPb := &pb.Dataset{Name: "foo", NumReplicas: 1}
     d.EXPECT().Meta().Return(dPb)
@@ -153,12 +148,11 @@ func (suite *ManagerTestSuite) TestDatasetCreated() {
     d.EXPECT().Meta().Return(dPb)
     d.EXPECT().BuildPartitions(utils.NewSet("2"))
 
-    manager.datasetCreated(d)
+    suite.manager.datasetCreated(d)
 }
 
 func (suite *ManagerTestSuite) TestDatasetDeleted() {
-    manager := suite.manager.(*manager)
-    manager.localDatasets.Add("foo")
+    suite.manager.localDatasets.Add("foo")
 
     d := NewMockDataset(suite.mockController)
     dPb := &pb.Dataset{Name: "foo", NumReplicas: 1}
@@ -167,17 +161,16 @@ func (suite *ManagerTestSuite) TestDatasetDeleted() {
     d.EXPECT().DeleteAllPartitions()
     d.EXPECT().Meta().Return(dPb)
 
-    manager.datasetDeleted(d)
+    suite.manager.datasetDeleted(d)
 }
 
 func (suite *ManagerTestSuite) TestDatasetDeletedWithNoLocalPartitions() {
-    manager := suite.manager.(*manager)
 
     d := NewMockDataset(suite.mockController)
     dPb := &pb.Dataset{Name: "foo", NumReplicas: 1}
     d.EXPECT().Meta().Return(dPb)
 
-    manager.datasetDeleted(d)
+    suite.manager.datasetDeleted(d)
 }
 
 func TestManagerTestSuite(t *testing.T) {
