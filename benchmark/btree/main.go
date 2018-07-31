@@ -8,6 +8,7 @@ import (
     "strconv";
     "context";
     "sort";
+    "runtime";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/index";
@@ -16,6 +17,16 @@ import (
 
     log "github.com/Sirupsen/logrus";
 )
+
+type searchTask struct {
+    id int
+    query math.Vector
+}
+
+type searchTaskResult struct {
+    id int
+    items []*pb.SearchResultItem
+}
 
 func parseLine(line []string) (int64, math.Vector, error) {
     id, err := strconv.ParseInt(line[0], 10, 64)
@@ -35,6 +46,23 @@ func parseLine(line []string) (int64, math.Vector, error) {
     return id, vec, nil
 }
 
+func searchWorker(ctx context.Context, btreeIndex index.Index, tasks chan searchTask, results chan searchTaskResult) {
+    for {
+        select {
+        case task := <-tasks:
+            neighbors := btreeIndex.Search(ctx, task.query)
+            sort.Sort(neighbors)
+            k := 100
+            if k > len(neighbors) {
+                k = len(neighbors)
+            }
+            results <- searchTaskResult{task.id, neighbors[:k]}
+        case <-ctx.Done():
+            return
+        }
+    }
+}
+
 func main() {
     trainDataFile, err := os.Open("./benchmark/data/sift-128/train.csv")
     if err != nil {
@@ -42,7 +70,7 @@ func main() {
     }
     defer trainDataFile.Close()
 
-    btreeIndex := index.NewBtreeIndex(128, "Euclidean", 30, 512)
+    btreeIndex := index.NewBtreeIndex(128, "Euclidean", 50, 64)
     trainDataReader := csv.NewReader(trainDataFile)
     start := time.Now()
     for {
@@ -90,17 +118,33 @@ func main() {
     }
     log.Infof("Test data load time: %s", time.Since(start))
 
-    start = time.Now()
-    nns := make([][]*pb.SearchResultItem, len(testData))
-    for i, item := range testData {
-        neighbors := btreeIndex.Search(context.Background(), item)
-        sort.Sort(neighbors)
-        k := 100
-        if k > len(neighbors) {
-            k = len(neighbors)
-        }
-        nns[i] = neighbors[:k]
+    numCPUs := runtime.NumCPU()
+    log.Infof("Search threads: %d", numCPUs)
+    tasksChan := make(chan searchTask, numCPUs)
+    resultChan := make(chan searchTaskResult)
+    ctx, stopSearchWorkers := context.WithCancel(context.Background())
+    for i := 0; i < numCPUs; i++ {
+        go searchWorker(ctx, btreeIndex, tasksChan, resultChan)
     }
+
+    start = time.Now()
+    go func() {
+        for i, item := range testData {
+            tasksChan <- searchTask{i, item}
+        }
+    }()
+
+    nns := make([][]*pb.SearchResultItem, len(testData))
+    n := 0
+    for {
+        result := <-resultChan
+        nns[result.id] = result.items
+        n++
+        if n == len(testData) {
+            break
+        }
+    }
+    stopSearchWorkers()
     duration := time.Since(start)
     log.Infof("Search time: %s, qps: %.4f", duration, float64(len(nns)) / duration.Seconds())
 
