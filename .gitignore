@@ -12,5 +12,6 @@
 *.out
 
 *.DS_Store
+bin/*
 notebooks/*
 benchmark/data/*
