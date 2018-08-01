@@ -40,7 +40,7 @@ type itemCellDistance struct {
 // Every node of this tree (except leaf nodes) has number of children determined by
 // splitFactor argument.
 // Once there is <= maxCellItems in a node, it's considered to be a leaf node.
-func NewVoronoiIndex(size int, metric string, splitFactor, maxCellItems int) Index {
+func NewVoronoiIndex(size int, metric string, splitFactor, maxCellItems int) * voronoiIndex {
     return &voronoiIndex {
         baseIndex: newBaseIndex(size, metric),
         splitFactor: splitFactor,

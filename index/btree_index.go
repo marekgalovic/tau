@@ -38,7 +38,7 @@ type btreeSplitArgs struct {
 // Every node uniformly samples a pair of points and using a hyperplane equidistant
 // to these two points splits space based on signed point plane distance.
 // Once there is <= maxLeafItems in a node, it's considered to be a leaf node.
-func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) Index {
+func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) *btreeIndex {
     if numTrees < 1 {
         panic("Num trees has to be >= 1")
     }

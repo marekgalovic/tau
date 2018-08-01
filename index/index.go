@@ -33,7 +33,7 @@ type baseIndex struct {
 }
 
 func newBaseIndex(size int, metric string) baseIndex {
-    return baseIndex{
+    return baseIndex {
         size: size,
         metric: metric,
         items: make(map[int64]math.Vector),
@@ -41,7 +41,7 @@ func newBaseIndex(size int, metric string) baseIndex {
 }
 
 func (i *baseIndex) ByteSize() int {
-    return 8 * int(i.size) * i.Len()
+    return 4 * int(i.size) * i.Len()
 }
 
 func (i *baseIndex) Len() int {
