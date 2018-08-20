@@ -39,6 +39,12 @@ func TestTrunc(t *testing.T) {
     assert.Equal(t, 3, Trunc(3.1))
 }
 
+func TestFloor(t *testing.T) {
+    assert.Equal(t, 2, Floor(2.1))
+    assert.Equal(t, 2, Floor(2.9))
+    assert.Equal(t, 3, Floor(3.0))
+}
+
 func TestMin(t *testing.T) {
     assert.Equal(t, float32(0), Min(0, 12, 4, 18))
     assert.Equal(t, float32(-5), Min(0, 12, -5, 18))

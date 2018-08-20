@@ -40,6 +40,10 @@ func Trunc(x float32) int {
     return int(goMath.Trunc(float64(x)))
 }
 
+func Floor(x float32) int {
+    return int(goMath.Floor(float64(x)))
+}
+
 func Min(values ...float32) float32 {
     min := MaxFloat
     for _, value := range values {
