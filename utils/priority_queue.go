@@ -6,61 +6,129 @@ import (
 
 type PriorityQueue interface {
     Len() int
-    Push(float32, interface{})
-    Pop() interface{}
+    Push(*PriorityQueueItem)
+    Pop() *PriorityQueueItem
+    Peek() *PriorityQueueItem
+    Reverse() PriorityQueue
+    ToSlice() []*PriorityQueueItem
+    ToIterator() <-chan *PriorityQueueItem
 }
 
 type priorityQueue struct {
     queue heap.Interface
+    maxSize int
 }
 
-type priorityQueueItem struct {
+type PriorityQueueItem struct {
     priority float32
     value interface{}
 }
 
-func NewMinPriorityQueue() *priorityQueue {
+func NewPriorityQueueItem(priority float32, value interface{}) *PriorityQueueItem {
+    return &PriorityQueueItem{priority, value}
+}
+
+func NewMinPriorityQueue(items ...*PriorityQueueItem) PriorityQueue {
     queue := make(minPriorityQueue, 0)
-    heap.Init(&queue)
-
-    return &priorityQueue {
-        queue: &queue,
-    }
+    return initializePriorityQueue(&queue, items...)
 }
 
-func NewMaxPriorityQueue() *priorityQueue {
+func NewMaxPriorityQueue(items ...*PriorityQueueItem) PriorityQueue {
     queue := make(maxPriorityQueue, 0)
-    heap.Init(&queue)
-
-    return &priorityQueue {
-        queue: &queue,
-    }
+    return initializePriorityQueue(&queue, items...)
 }
 
+func initializePriorityQueue(queue heap.Interface, items ...*PriorityQueueItem) PriorityQueue {
+    heap.Init(queue)
+    pq := &priorityQueue {
+        queue: queue,
+    }
+
+    for _, item := range items {
+        pq.Push(item)
+    }
+
+    return pq
+}
+
+// Item
+func (item *PriorityQueueItem) Priority() float32 {
+    return item.priority
+}
+
+func (item *PriorityQueueItem) Value() interface{} {
+    return item.value
+}
+
+// Priority Queue
 func (pq *priorityQueue) Len() int {
     return pq.queue.Len()
 }
 
-func (pq *priorityQueue) Push(priority float32, value interface{}) {
-    if priority < 0 {
+func (pq *priorityQueue) Push(item *PriorityQueueItem) {
+    if item.priority < 0 {
         panic("Negative priority")
     }
     
-    heap.Push(pq.queue, &priorityQueueItem{priority, value})
+    heap.Push(pq.queue, item)
 }
 
-func (pq *priorityQueue) Pop() interface{} {
+func (pq *priorityQueue) Pop() *PriorityQueueItem {
     if pq.Len() == 0 {
         panic("Empty priority queue")
     }
 
-    item := heap.Pop(pq.queue).(*priorityQueueItem)
-    return item.value
+    return heap.Pop(pq.queue).(*PriorityQueueItem)
 }
 
-type minPriorityQueue []*priorityQueueItem
+func (pq *priorityQueue) Peek() *PriorityQueueItem {
+    if pq.Len() == 0 {
+        panic("Empty priority queue")
+    }
 
-type maxPriorityQueue []*priorityQueueItem
+    item := heap.Pop(pq.queue)
+    heap.Push(pq.queue, item)
+
+    return item.(*PriorityQueueItem)
+}
+
+func (pq *priorityQueue) Reverse() PriorityQueue {
+    switch pq.queue.(type) {
+    case *minPriorityQueue:
+        queue := maxPriorityQueue(*pq.queue.(*minPriorityQueue))
+
+        return initializePriorityQueue(&queue)
+    case *maxPriorityQueue:
+        queue := minPriorityQueue(*pq.queue.(*maxPriorityQueue))
+
+        return initializePriorityQueue(&queue)
+    default:
+        panic("Invalid queue type")
+    }
+}
+
+func (pq *priorityQueue) ToSlice() []*PriorityQueueItem {
+    result := make([]*PriorityQueueItem, pq.Len())
+    for i := 0; i < len(result); i++ {
+        result[i] = pq.Pop()
+    }
+    return result
+}
+
+func (pq *priorityQueue) ToIterator() <-chan *PriorityQueueItem {
+    resultChan := make(chan *PriorityQueueItem)
+    go func() {
+        for pq.Len() > 0 {
+            resultChan <- pq.Pop()
+        }
+        close(resultChan)
+    }()
+    return resultChan
+}
+
+type minPriorityQueue []*PriorityQueueItem
+
+type maxPriorityQueue []*PriorityQueueItem
 
 func (pq minPriorityQueue) Len() int { return len(pq) }
 
@@ -80,7 +148,7 @@ func (pq *minPriorityQueue) Pop() interface{} {
 }
 
 func (pq *minPriorityQueue) Push(val interface{}) {
-    *pq = append(*pq, val.(*priorityQueueItem))
+    *pq = append(*pq, val.(*PriorityQueueItem))
 }
 
 func (pq maxPriorityQueue) Len() int { return len(pq) }
@@ -101,5 +169,5 @@ func (pq *maxPriorityQueue) Pop() interface{} {
 }
 
 func (pq *maxPriorityQueue) Push(val interface{}) {
-    *pq = append(*pq, val.(*priorityQueueItem))
+    *pq = append(*pq, val.(*PriorityQueueItem))
 }

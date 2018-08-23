@@ -1,6 +1,20 @@
 package math
 
-var SupportedDistanceMetrics = []string{"Euclidean", "Manhattan", "Cosine"}
+type Space interface {
+    Distance(Vector, Vector) float32
+}
+
+type space struct {
+    distanceFunc func(Vector, Vector) float32
+}
+
+func (s *space) Distance(a, b Vector) float32 {
+    return s.distanceFunc(a, b)
+}
+
+func NewEuclideanSpace() Space {
+    return &space{EuclideanDistance}
+}
 
 func EuclideanDistance(a, b Vector) float32 {
     assertSameDim(&a, &b)
@@ -13,6 +27,10 @@ func EuclideanDistance(a, b Vector) float32 {
     return Sqrt(distance)
 }
 
+func NewManhattanSpace() Space {
+    return &space{ManhattanDistance}
+}
+
 func ManhattanDistance(a, b Vector) float32 {
     assertSameDim(&a, &b)
 
@@ -22,6 +40,10 @@ func ManhattanDistance(a, b Vector) float32 {
     }
 
     return distance
+}
+
+func NewCosineSpace() Space {
+    return &space{CosineDistance}
 }
 
 func CosineDistance(a, b Vector) float32 {
