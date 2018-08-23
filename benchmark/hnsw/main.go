@@ -70,7 +70,7 @@ func main() {
     }
     defer trainDataFile.Close()
 
-    idx := index.NewHnswIndex(128, "Euclidean", 1, 50, 20)
+    idx := index.NewHnswIndex(128, "Euclidean")
     trainDataReader := csv.NewReader(trainDataFile)
     start := time.Now()
     for {
@@ -87,9 +87,9 @@ func main() {
         }
         idx.Add(id, vec)
 
-        if id > 100000 {
-            break
-        }
+        // if id > 10000 {
+        //     break
+        // }
     }
     log.Infof("Index load time: %s", time.Since(start))
 

@@ -4,21 +4,78 @@ import (
     "io";
     "context";
     "sync";
-    // "sort";
-    // "time";
+    "time";
 
     "github.com/marekgalovic/tau/math";
     pb "github.com/marekgalovic/tau/protobuf";
     "github.com/marekgalovic/tau/utils";
 
-    // log "github.com/Sirupsen/logrus";
+    progressBar "gopkg.in/cheggaaa/pb.v1";
+
+    log "github.com/Sirupsen/logrus";
 )
+
+// Options
+type HnswOption interface {
+    apply(*hnswConfig)
+}
+
+type hnswOption struct {
+    applyFunc func(*hnswConfig)
+}
+
+func (opt *hnswOption) apply(index *hnswConfig) {
+    opt.applyFunc(index)
+}
+
+func HnswLevelMultiplier(value float32) HnswOption {
+    return &hnswOption{func(config *hnswConfig) {
+        config.levelMultiplier = value
+    }}
+}
+
+func HnswEf(value int) HnswOption {
+    return &hnswOption{func(config *hnswConfig) {
+        config.ef = value
+    }}
+}
+
+func HnswEfConstruction(value int) HnswOption {
+    return &hnswOption{func(config *hnswConfig) {
+        config.efConstruction = value
+    }}
+}
+
+func HnswM(value int) HnswOption {
+    return &hnswOption{func(config *hnswConfig) {
+        config.m = value
+    }}
+}
+
+func HnswMmax(value int) HnswOption {
+    return &hnswOption{func(config *hnswConfig) {
+        config.mMax = value
+    }}
+}
+
+func HnswMmax0(value int) HnswOption {
+    return &hnswOption{func(config *hnswConfig) {
+        config.mMax0 = value
+    }}
+}
+
+type hnswConfig struct {
+    levelMultiplier float32
+    ef int
+    efConstruction int
+    m int
+    mMax int
+    mMax0 int
+}
 
 type hnswIndex struct {
     baseIndex
-    levelMultiplier float32
-    efConstruction int
-    m int
+    config *hnswConfig
     maxLevel int
     maxLevelMutex *sync.Mutex
     entrypoint *hnswVertex
@@ -36,13 +93,38 @@ type hnswVertexDistance struct {
     distance float32
 }
 
-func NewHnswIndex(size int, metric string, levelMultiplier, efConstruction, m int) *hnswIndex {
+func NewHnswIndex(size int, metric string, options ...HnswOption) *hnswIndex {
+    config := &hnswConfig {
+        levelMultiplier: -1,
+        ef: 50,
+        efConstruction: 200,
+        m: 16,
+        mMax: -1,
+        mMax0: -1,
+    }
+
+    for _, option := range options {
+        option.apply(config)
+    }
+
+    if config.levelMultiplier == -1 {
+        config.levelMultiplier = 1.0 / math.Log(float32(config.m))
+    }
+
+    if config.mMax == -1 {
+        config.mMax = 2 * config.m
+    }
+
+    if config.mMax0 == -1 {
+        config.mMax0 = config.mMax
+    }
+
+    log.Info(config)
+
     return &hnswIndex{
         baseIndex: newBaseIndex(size, metric),
+        config: config,
         maxLevelMutex: &sync.Mutex{},
-        levelMultiplier: float32(levelMultiplier),
-        efConstruction: efConstruction,
-        m: m,
     }
 }
 
@@ -63,6 +145,13 @@ func newHnswVertex(id int64, level int) *hnswVertex {
 }
 
 // Vertex
+func (v *hnswVertex) edgesCount(level int) int {
+    defer v.edgeMutexes[level].Unlock()
+    v.edgeMutexes[level].Lock()
+
+    return v.edges[level].Len()
+}
+
 func (v *hnswVertex) addEdge(level int, edge *hnswVertex) {
     defer v.edgeMutexes[level].Unlock()
     v.edgeMutexes[level].Lock()
@@ -153,10 +242,15 @@ func (index *hnswIndex) Search(ctx context.Context, query math.Vector) SearchRes
         entrypoint, minDistance = index.greedyClosestNeighbor(query, entrypoint, minDistance, l)
     }
 
-    neighbors := index.searchLevel(query, entrypoint, 100, 0)
+    neighbors := index.searchLevel(query, entrypoint, index.config.ef, 0).Reverse()
 
-    result := make(SearchResult, neighbors.Len())
-    for i := 0; i < len(result); i++ {
+    k := 100
+    if neighbors.Len() < k {
+        k = neighbors.Len()
+    }
+
+    result := make(SearchResult, k)
+    for i := 0; i < k; i++ {
         item := neighbors.Pop()
         result[i] = &pb.SearchResultItem{Id: item.Value().(*hnswVertex).id, Distance: item.Priority()}
     }
@@ -184,7 +278,11 @@ func (index *hnswIndex) Build(ctx context.Context) {
         }(workQueue, ctx)
     }
 
+    bar := progressBar.StartNew(index.Len())
+    bar.SetRefreshRate(5 * time.Second)
+
     for id, _ := range index.items {
+        bar.Increment()
         if index.entrypoint == nil {
             index.entrypoint = newHnswVertex(id, 0)
             continue
@@ -196,6 +294,8 @@ func (index *hnswIndex) Build(ctx context.Context) {
             return
         }
     }
+
+    bar.Finish()
 }
 
 func (index *hnswIndex) addToGraph(id int64) {
@@ -219,14 +319,23 @@ func (index *hnswIndex) addToGraph(id int64) {
     }
 
     for l := int(math.Min(float32(index.maxLevel), float32(level))); l >= 0; l-- {
-        neighbors := index.searchLevel(query, entrypoint, index.efConstruction, l)
-        entrypoint = neighbors.Peek().Value().(*hnswVertex)
+        neighbors := index.searchLevel(query, entrypoint, index.config.efConstruction, l)
+        neighbors = index.selectNeighbors(neighbors, index.config.m)
 
         for neighbors.Len() > 0 {
             neighbor := neighbors.Pop().Value().(*hnswVertex)
+            entrypoint = neighbor
 
             vertex.addEdge(l, neighbor)
             neighbor.addEdge(l, vertex)
+
+            mMax := index.config.mMax
+            if l == 0 {
+                mMax = index.config.mMax0
+            }
+            if neighbor.edgesCount(l) > mMax {
+                index.pruneNeighbors(neighbor, mMax, l)
+            }
         }
     }
 
@@ -237,7 +346,7 @@ func (index *hnswIndex) addToGraph(id int64) {
 }
 
 func (index *hnswIndex) randomLevel() int {
-    return math.Floor(math.RandomExponential(index.levelMultiplier))
+    return math.Floor(math.RandomExponential(index.config.levelMultiplier))
 }
 
 func (index *hnswIndex) greedyClosestNeighbor(query math.Vector, entrypoint *hnswVertex, minDistance float32, level int) (*hnswVertex, float32) {
@@ -294,5 +403,33 @@ func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, e
         }
     }
 
-    return resultVertices.Reverse()
+    return resultVertices
+}
+
+func (index *hnswIndex) selectNeighbors(neighbors utils.PriorityQueue, k int) utils.PriorityQueue {
+    for neighbors.Len() > k {
+        neighbors.Pop()
+    }
+
+    return neighbors
+}
+
+func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
+    neighborsQueue := utils.NewMaxPriorityQueue()
+
+    query := index.Get(vertex.id)
+    for neighbor := range vertex.iterateEdges(level) {
+        distance := math.EuclideanDistance(query, index.Get(neighbor.id))
+
+        neighborsQueue.Push(utils.NewPriorityQueueItem(distance, neighbor))
+    }
+
+    neighborsQueue = index.selectNeighbors(neighborsQueue, k)
+    newNeighbors := utils.NewSet()
+
+    for neighborsQueue.Len() > 0 {
+        newNeighbors.Add(neighborsQueue.Pop().Value())
+    }
+
+    vertex.setEdges(level, newNeighbors)
 }
