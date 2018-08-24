@@ -230,9 +230,8 @@ func (index *voronoiIndex) readCells(reader io.Reader) error {
 // If a difference of distance between nearest cell and other cells in a given
 // node is < 10% then other nodes are also considered with lower priority.
 // Traversal stops once there are int(splitFactor / 5) * maxCellItems candidates.
-func (index *voronoiIndex) Search(ctx context.Context, query math.Vector) SearchResult {
+func (index *voronoiIndex) Search(ctx context.Context, k int, query math.Vector) SearchResult {
     kNearest := int(index.splitFactor / 5)
-    maxResultCandidates := kNearest * index.maxCellItems
 
     stack := utils.NewStack()
     stack.Push(index.root)
@@ -252,7 +251,7 @@ func (index *voronoiIndex) Search(ctx context.Context, query math.Vector) Search
             for _, itemId := range cell.itemIds {
                 resultIds.Add(itemId)
 
-                if resultIds.Len() >= maxResultCandidates {
+                if resultIds.Len() >= k {
                     break SEARCH_LOOP
                 }
             }

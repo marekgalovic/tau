@@ -218,7 +218,7 @@ func (index *btreeIndex) readTree(reader io.Reader) (*btreeNode, error) {
 // If query lies on one side of the plane but condition abs(distance) <= log(l2_length(query)) / 10
 // is true then other side of the plane is also considered with lower priority.
 // Traversal stops once there are numTrees * maxLeafItems candidates. 
-func (index *btreeIndex) Search(ctx context.Context, query math.Vector) SearchResult {
+func (index *btreeIndex) Search(ctx context.Context, k int, query math.Vector) SearchResult {
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
@@ -241,7 +241,7 @@ func (index *btreeIndex) Search(ctx context.Context, query math.Vector) SearchRe
         case resultSlice := <- resultsChan:
             for _, id := range resultSlice {
                 resultIds.Add(id)
-                if resultIds.Len() == index.numTrees * index.maxLeafItems {
+                if resultIds.Len() >= k {
                     break SEARCH_LOOP
                 }
             }

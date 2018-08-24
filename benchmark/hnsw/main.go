@@ -50,7 +50,7 @@ func searchWorker(ctx context.Context, idx index.Index, tasks chan searchTask, r
     for {
         select {
         case task := <-tasks:
-            neighbors := idx.Search(ctx, task.query)
+            neighbors := idx.Search(ctx, 10, task.query)
             sort.Sort(neighbors)
             k := 100
             if k > len(neighbors) {
@@ -70,7 +70,7 @@ func main() {
     }
     defer trainDataFile.Close()
 
-    idx := index.NewHnswIndex(128, "Euclidean")
+    idx := index.NewHnswIndex(128, "Euclidean", index.HnswSearchAlgorithm(index.HnswSearchHeuristic))
     trainDataReader := csv.NewReader(trainDataFile)
     start := time.Now()
     for {

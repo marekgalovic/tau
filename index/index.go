@@ -12,7 +12,7 @@ import (
 
 type Index interface {
     Build(context.Context)
-    Search(context.Context, math.Vector) SearchResult
+    Search(context.Context, int, math.Vector) SearchResult
     ByteSize() int
     Len() int
     Size() int

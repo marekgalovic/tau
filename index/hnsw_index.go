@@ -15,6 +15,22 @@ import (
     log "github.com/Sirupsen/logrus";
 )
 
+type hnswSearchAlgorithm int
+
+const (
+    HnswSearchSimple hnswSearchAlgorithm = iota
+    HnswSearchHeuristic
+)
+
+func (a hnswSearchAlgorithm) String() string {
+    names := [...]string {
+        "Simple",
+        "Heuristic",
+    }
+
+    return names[a]
+}
+
 // Options
 type HnswOption interface {
     apply(*hnswConfig)
@@ -64,7 +80,14 @@ func HnswMmax0(value int) HnswOption {
     }}
 }
 
+func HnswSearchAlgorithm(value hnswSearchAlgorithm) HnswOption {
+    return &hnswOption{func(config *hnswConfig) {
+        config.searchAlgorithm = value
+    }}
+}
+
 type hnswConfig struct {
+    searchAlgorithm hnswSearchAlgorithm
     levelMultiplier float32
     ef int
     efConstruction int
@@ -95,6 +118,7 @@ type hnswVertexDistance struct {
 
 func NewHnswIndex(size int, metric string, options ...HnswOption) *hnswIndex {
     config := &hnswConfig {
+        searchAlgorithm: HnswSearchSimple,
         levelMultiplier: -1,
         ef: 50,
         efConstruction: 200,
@@ -112,14 +136,17 @@ func NewHnswIndex(size int, metric string, options ...HnswOption) *hnswIndex {
     }
 
     if config.mMax == -1 {
-        config.mMax = 2 * config.m
+        config.mMax = config.m
     }
 
     if config.mMax0 == -1 {
-        config.mMax0 = config.mMax
+        config.mMax0 = 2 * config.m
     }
 
-    log.Info(config)
+    log.Infof(
+        "HNSW(levelMultiplier=%.4f, ef=%d, efConstruction=%d, m=%d, mMax=%d, mMax0=%d, searchAlgorithm=%s)",
+        config.levelMultiplier, config.ef, config.efConstruction, config.m, config.mMax, config.mMax0, config.searchAlgorithm,
+    )
 
     return &hnswIndex{
         baseIndex: newBaseIndex(size, metric),
@@ -136,7 +163,7 @@ func newHnswVertex(id int64, level int) *hnswVertex {
         edgeMutexes: make([]*sync.RWMutex, level + 1),
     }
 
-    for i := 0; i < (level + 1); i++ {
+    for i := 0; i <= level; i++ {
         vertex.edges[i] = utils.NewSet()
         vertex.edgeMutexes[i] = &sync.RWMutex{}
     }
@@ -235,7 +262,7 @@ func (index *hnswIndex) Print() {
     // log.Infof("Visited nodes: %d", visitedIds.Len())
 }
 
-func (index *hnswIndex) Search(ctx context.Context, query math.Vector) SearchResult {
+func (index *hnswIndex) Search(ctx context.Context, k int, query math.Vector) SearchResult {
     entrypoint := index.entrypoint
     minDistance := math.EuclideanDistance(query, index.Get(index.entrypoint.id))
     for l := index.maxLevel; l > 0; l-- {
@@ -244,7 +271,6 @@ func (index *hnswIndex) Search(ctx context.Context, query math.Vector) SearchRes
 
     neighbors := index.searchLevel(query, entrypoint, index.config.ef, 0).Reverse()
 
-    k := 100
     if neighbors.Len() < k {
         k = neighbors.Len()
     }
@@ -320,7 +346,13 @@ func (index *hnswIndex) addToGraph(id int64) {
 
     for l := int(math.Min(float32(index.maxLevel), float32(level))); l >= 0; l-- {
         neighbors := index.searchLevel(query, entrypoint, index.config.efConstruction, l)
-        neighbors = index.selectNeighbors(neighbors, index.config.m)
+
+        switch index.config.searchAlgorithm {
+        case HnswSearchSimple:
+            neighbors = index.selectNeighbors(neighbors, index.config.m)
+        case HnswSearchHeuristic:
+            neighbors = index.selectNeighborsHeuristic(query, neighbors, index.config.m, l, true, true)
+        }
 
         for neighbors.Len() > 0 {
             neighbor := neighbors.Pop().Value().(*hnswVertex)
@@ -403,6 +435,7 @@ func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, e
         }
     }
 
+    // MaxPriorityQueue
     return resultVertices
 }
 
@@ -412,6 +445,45 @@ func (index *hnswIndex) selectNeighbors(neighbors utils.PriorityQueue, k int) ut
     }
 
     return neighbors
+}
+
+func (index *hnswIndex) selectNeighborsHeuristic(query math.Vector, neighbors utils.PriorityQueue, k, level int, extendCandidates, keepPruned bool) utils.PriorityQueue {
+    candidateVertices := neighbors.Reverse()  // MinPriorityQueue
+    existingCandidates := utils.NewSet()
+
+    if extendCandidates {
+        for neighbors.Len() > 0 {
+            vertex := neighbors.Pop().Value().(*hnswVertex)
+            existingCandidates.Add(vertex)
+
+            for neighbor := range vertex.iterateEdges(level) {
+                if existingCandidates.Contains(neighbor) {
+                    continue
+                }
+
+                distance := math.EuclideanDistance(query, index.Get(neighbor.id))
+                candidateVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
+                existingCandidates.Add(neighbor)
+            }
+        }
+    }
+
+    result := utils.NewMaxPriorityQueue()
+    for (candidateVertices.Len() > 0) && (result.Len() < k) {
+        result.Push(candidateVertices.Pop())
+    }
+
+    if keepPruned {
+        for candidateVertices.Len() > 0 {
+            result.Push(candidateVertices.Pop())
+
+            if result.Len() >= k {
+                break
+            }
+        }
+    }
+
+    return result
 }
 
 func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
@@ -424,7 +496,13 @@ func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
         neighborsQueue.Push(utils.NewPriorityQueueItem(distance, neighbor))
     }
 
-    neighborsQueue = index.selectNeighbors(neighborsQueue, k)
+    switch index.config.searchAlgorithm {
+    case HnswSearchSimple:
+        neighborsQueue = index.selectNeighbors(neighborsQueue, index.config.m)
+    case HnswSearchHeuristic:
+        neighborsQueue = index.selectNeighborsHeuristic(query, neighborsQueue, index.config.m, level, true, true)
+    }
+
     newNeighbors := utils.NewSet()
 
     for neighborsQueue.Len() > 0 {
