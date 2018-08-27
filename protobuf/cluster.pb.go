@@ -8,6 +8,7 @@ It is generated from these files:
 	cluster.proto
 	core.proto
 	datasets.proto
+	math.proto
 	search.proto
 
 It has these top-level messages:

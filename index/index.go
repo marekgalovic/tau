@@ -20,7 +20,6 @@ type Index interface {
     Items() map[int64]math.Vector
     Add(int64, math.Vector) error
     Get(int64) math.Vector
-    ComputeDistance(math.Vector, math.Vector) float32
     Load(io.Reader) error
     Save(io.Writer) error
     ToProto() *pb.Index
@@ -28,14 +27,14 @@ type Index interface {
 
 type baseIndex struct {
     size int
-    metric string
+    space math.Space
     items map[int64]math.Vector
 }
 
-func newBaseIndex(size int, metric string) baseIndex {
+func newBaseIndex(size int, space math.Space) baseIndex {
     return baseIndex {
         size: size,
-        metric: metric,
+        space: space,
         items: make(map[int64]math.Vector),
     }
 }
@@ -63,16 +62,16 @@ func (i *baseIndex) Items() map[int64]math.Vector {
 func (i *baseIndex) ToProto() *pb.Index {
     return &pb.Index {
         Size: int32(i.size),
-        Metric: i.metric,
+        Space: i.space.ToProto(),
     }
 }
 
 func FromProto(proto *pb.Index) Index {
     switch options := proto.Options.(type) {
     case *pb.Index_Voronoi:
-        return NewVoronoiIndex(int(proto.Size), proto.Metric, VoronoiSplitFactor(int(options.Voronoi.SplitFactor)), VoronoiMaxCellItems(int(options.Voronoi.MaxCellItems)))
+        return NewVoronoiIndex(int(proto.Size), math.NewSpaceFromProto(proto.Space), VoronoiSplitFactor(int(options.Voronoi.SplitFactor)), VoronoiMaxCellItems(int(options.Voronoi.MaxCellItems)))
     case *pb.Index_Btree:
-        return NewBtreeIndex(int(proto.Size), proto.Metric, BtreeNumTrees(int(options.Btree.NumTrees)), BtreeMaxLeafItems(int(options.Btree.MaxLeafItems)))
+        return NewBtreeIndex(int(proto.Size), math.NewSpaceFromProto(proto.Space), BtreeNumTrees(int(options.Btree.NumTrees)), BtreeMaxLeafItems(int(options.Btree.MaxLeafItems)))
     default:
         panic("Invalid index type")
     }
@@ -94,19 +93,6 @@ func (i *baseIndex) Get(id int64) math.Vector {
     return i.items[id]
 }
 
-func (i *baseIndex) ComputeDistance(a, b math.Vector) float32 {
-    if i.metric == "Euclidean" {
-        return math.EuclideanDistance(a, b)
-    }
-    if i.metric == "Manhattan" {
-        return math.ManhattanDistance(a, b)
-    }
-    if i.metric == "Cosine" {
-        return math.CosineDistance(a, b)
-    }
-    panic("Invalid metric")
-}
-
 func (index *baseIndex) writeHeader(writer io.Writer, indexType []byte) error {
     if len(indexType) != 6 {
         return fmt.Errorf("Index type must be 6 bytes long")
@@ -120,11 +106,7 @@ func (index *baseIndex) writeHeader(writer io.Writer, indexType []byte) error {
         return err
     }
     // Metric
-    metricBytes := []byte(index.metric)
-    if err := binary.Write(writer, binary.LittleEndian, int32(len(metricBytes))); err != nil {
-        return err
-    }
-    if _, err := writer.Write(metricBytes); err != nil {
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.space.ToProto())); err != nil {
         return err
     }
 
@@ -144,15 +126,11 @@ func (index *baseIndex) readHeader(reader io.Reader) ([]byte, error) {
     }
     index.size = int(size)
     // Metric
-    var metricBytesSize int32
-    if err := binary.Read(reader, binary.LittleEndian, &metricBytesSize); err != nil {
+    var spaceEnum pb.SpaceType
+    if err := binary.Read(reader, binary.LittleEndian, &spaceEnum); err != nil {
         return nil, err
     }
-    metric := make([]byte, metricBytesSize)
-    if _, err := reader.Read(metric); err != nil {
-        return nil, err
-    }
-    index.metric = string(metric)
+    index.space = math.NewSpaceFromProto(spaceEnum)
 
     return indexType, nil
 }

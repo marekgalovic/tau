@@ -26,7 +26,7 @@ type SearchRequest struct {
 func (m *SearchRequest) Reset()                    { *m = SearchRequest{} }
 func (m *SearchRequest) String() string            { return proto.CompactTextString(m) }
 func (*SearchRequest) ProtoMessage()               {}
-func (*SearchRequest) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{0} }
+func (*SearchRequest) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{0} }
 
 func (m *SearchRequest) GetDatasetName() string {
 	if m != nil {
@@ -59,7 +59,7 @@ type SearchPartitionsRequest struct {
 func (m *SearchPartitionsRequest) Reset()                    { *m = SearchPartitionsRequest{} }
 func (m *SearchPartitionsRequest) String() string            { return proto.CompactTextString(m) }
 func (*SearchPartitionsRequest) ProtoMessage()               {}
-func (*SearchPartitionsRequest) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{1} }
+func (*SearchPartitionsRequest) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{1} }
 
 func (m *SearchPartitionsRequest) GetDatasetName() string {
 	if m != nil {
@@ -97,7 +97,7 @@ type SearchResultItem struct {
 func (m *SearchResultItem) Reset()                    { *m = SearchResultItem{} }
 func (m *SearchResultItem) String() string            { return proto.CompactTextString(m) }
 func (*SearchResultItem) ProtoMessage()               {}
-func (*SearchResultItem) Descriptor() ([]byte, []int) { return fileDescriptor3, []int{2} }
+func (*SearchResultItem) Descriptor() ([]byte, []int) { return fileDescriptor4, []int{2} }
 
 func (m *SearchResultItem) GetId() int64 {
 	if m != nil {
@@ -278,9 +278,9 @@ var _SearchService_serviceDesc = grpc.ServiceDesc{
 	Metadata: "search.proto",
 }
 
-func init() { proto.RegisterFile("search.proto", fileDescriptor3) }
+func init() { proto.RegisterFile("search.proto", fileDescriptor4) }
 
-var fileDescriptor3 = []byte{
+var fileDescriptor4 = []byte{
 	// 250 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x91, 0xc1, 0x4b, 0xc3, 0x30,
 	0x14, 0xc6, 0x49, 0xe2, 0x86, 0x7b, 0x4e, 0x91, 0x87, 0x62, 0x19, 0x22, 0xb5, 0xa7, 0x9e, 0x8a,

@@ -1,19 +1,42 @@
 package math
 
+import (
+    pb "github.com/marekgalovic/tau/protobuf";
+)
+
 type Space interface {
     Distance(Vector, Vector) float32
+    ToProto() pb.SpaceType
 }
 
 type space struct {
+    spaceType pb.SpaceType
     distanceFunc func(Vector, Vector) float32
+}
+
+func NewSpaceFromProto(spaceType pb.SpaceType) Space {
+    switch spaceType {
+    case pb.SpaceType_EUCLIDEAN:
+        return NewEuclideanSpace()
+    case pb.SpaceType_MANHATTAN:
+        return NewManhattanSpace()
+    case pb.SpaceType_COSINE:
+        return NewCosineSpace()
+    default:
+        panic("Invalid space type")
+    }
 }
 
 func (s *space) Distance(a, b Vector) float32 {
     return s.distanceFunc(a, b)
 }
 
+func (s *space) ToProto() pb.SpaceType {
+    return s.spaceType
+}
+
 func NewEuclideanSpace() Space {
-    return &space{EuclideanDistance}
+    return &space{pb.SpaceType_EUCLIDEAN, EuclideanDistance}
 }
 
 func EuclideanDistance(a, b Vector) float32 {
@@ -28,7 +51,7 @@ func EuclideanDistance(a, b Vector) float32 {
 }
 
 func NewManhattanSpace() Space {
-    return &space{ManhattanDistance}
+    return &space{pb.SpaceType_MANHATTAN, ManhattanDistance}
 }
 
 func ManhattanDistance(a, b Vector) float32 {
@@ -43,7 +66,7 @@ func ManhattanDistance(a, b Vector) float32 {
 }
 
 func NewCosineSpace() Space {
-    return &space{CosineDistance}
+    return &space{pb.SpaceType_COSINE, CosineDistance}
 }
 
 func CosineDistance(a, b Vector) float32 {

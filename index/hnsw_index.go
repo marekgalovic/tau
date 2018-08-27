@@ -117,7 +117,7 @@ type hnswVertexDistance struct {
     distance float32
 }
 
-func NewHnswIndex(size int, metric string, options ...HnswOption) *hnswIndex {
+func NewHnswIndex(size int, space math.Space, options ...HnswOption) *hnswIndex {
     config := &hnswConfig {
         searchAlgorithm: HnswSearchSimple,
         levelMultiplier: -1,
@@ -150,7 +150,7 @@ func NewHnswIndex(size int, metric string, options ...HnswOption) *hnswIndex {
     )
 
     return &hnswIndex{
-        baseIndex: newBaseIndex(size, metric),
+        baseIndex: newBaseIndex(size, space),
         config: config,
         maxLevelMutex: &sync.Mutex{},
     }

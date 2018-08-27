@@ -68,7 +68,7 @@ type itemCellDistance struct {
 // Every node of this tree (except leaf nodes) has number of children determined by
 // splitFactor argument.
 // Once there is <= maxCellItems in a node, it's considered to be a leaf node.
-func NewVoronoiIndex(size int, metric string, options ...VoronoiOption) * voronoiIndex {
+func NewVoronoiIndex(size int, space math.Space, options ...VoronoiOption) * voronoiIndex {
     config := &voronoiConfig {
         splitFactor: 10,
         maxCellItems: 1024,
@@ -80,7 +80,7 @@ func NewVoronoiIndex(size int, metric string, options ...VoronoiOption) * vorono
 
 
     return &voronoiIndex {
-        baseIndex: newBaseIndex(size, metric),
+        baseIndex: newBaseIndex(size, space),
         config: config,
         root: &voronoiCell{},
     }
@@ -307,7 +307,7 @@ func (index *voronoiIndex) Search(ctx context.Context, k int, query math.Vector)
         stack.Push(cell.children[nearestCell.cellId])
     }
 
-    return newSearchResult(index, query, resultIds)
+    return newSearchResult(&index.baseIndex, query, resultIds)
 }
 
 func (index *voronoiIndex) initialCell(ids []int64) *voronoiCell {
@@ -396,7 +396,7 @@ func (index *voronoiIndex) nearestCell(item math.Vector, cells []*voronoiCell) (
     minDistance := math.MaxFloat
     var id int
     for cellId, cell := range cells {
-        if distance := math.EuclideanDistance(item, cell.centroid); distance < minDistance {
+        if distance := index.space.Distance(item, cell.centroid); distance < minDistance {
             minDistance = distance
             id = cellId
         }
@@ -407,7 +407,7 @@ func (index *voronoiIndex) nearestCell(item math.Vector, cells []*voronoiCell) (
 func (index *voronoiIndex) kNearestCells(k int, item math.Vector, cells []*voronoiCell) []*itemCellDistance {
     result := make([]*itemCellDistance, len(cells))
     for cellId, cell := range cells {
-        result[cellId] = &itemCellDistance{0, cellId, math.EuclideanDistance(item, cell.centroid)}
+        result[cellId] = &itemCellDistance{0, cellId, index.space.Distance(item, cell.centroid)}
     }
 
     sort.Slice(result, func(i, j int) bool {

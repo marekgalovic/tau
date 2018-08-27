@@ -8,13 +8,13 @@ import (
 
 type SearchResult []*pb.SearchResultItem
 
-func newSearchResult(index Index, query math.Vector, ids utils.Set) SearchResult {
+func newSearchResult(index *baseIndex, query math.Vector, ids utils.Set) SearchResult {
     result := make(SearchResult, 0, ids.Len())
 
     for idx := range ids.ToIterator() {
         result = append(result, &pb.SearchResultItem {
             Id: idx.(int64),
-            Distance: float32(index.ComputeDistance(index.Get(idx.(int64)), query)),
+            Distance: float32(index.space.Distance(index.Get(idx.(int64)), query)),
         })
     }
 

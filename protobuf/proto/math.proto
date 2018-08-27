@@ -1,0 +1,8 @@
+syntax = "proto3";
+package tau;
+
+enum SpaceType {
+    EUCLIDEAN = 0;
+    MANHATTAN = 1;
+    COSINE = 2;
+}

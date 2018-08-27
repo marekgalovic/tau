@@ -66,7 +66,7 @@ type btreeSplitArgs struct {
 // Every node uniformly samples a pair of points and using a hyperplane equidistant
 // to these two points splits space based on signed point plane distance.
 // Once there is <= maxLeafItems in a node, it's considered to be a leaf node.
-func NewBtreeIndex(size int, metric string, options ...BtreeOption) *btreeIndex {
+func NewBtreeIndex(size int, space math.Space, options ...BtreeOption) *btreeIndex {
     config := &btreeConfig {
         numTrees: 50,
         maxLeafItems: 128,
@@ -81,7 +81,7 @@ func NewBtreeIndex(size int, metric string, options ...BtreeOption) *btreeIndex 
     }
 
     return &btreeIndex {
-        baseIndex: newBaseIndex(size, metric),
+        baseIndex: newBaseIndex(size, space),
         config: config,
     }
 }
@@ -289,7 +289,7 @@ func (index *btreeIndex) Search(ctx context.Context, k int, query math.Vector) S
         }
     }
 
-    return newSearchResult(index, query, resultIds)
+    return newSearchResult(&index.baseIndex, query, resultIds)
 }
 
 func (index *btreeIndex) searchTree(tree *btreeNode, query math.Vector, ctx context.Context, results chan []int64, done chan struct{}) {

@@ -2,6 +2,7 @@ syntax = "proto3";
 package tau;
 
 import "core.proto";
+import "math.proto";
 
 service DatasetsService {
     rpc List(EmptyRequest) returns (stream Dataset);
@@ -45,7 +46,7 @@ message VoronoiIndexOptions {
 
 message Index {
     int32 size      = 2;
-    string metric   = 3;
+    SpaceType space = 3;
     oneof options {
         BtreeIndexOptions btree     = 4;
         VoronoiIndexOptions voronoi = 5;
