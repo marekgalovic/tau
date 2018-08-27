@@ -41,8 +41,8 @@ type hnswOption struct {
     applyFunc func(*hnswConfig)
 }
 
-func (opt *hnswOption) apply(index *hnswConfig) {
-    opt.applyFunc(index)
+func (opt *hnswOption) apply(config *hnswConfig) {
+    opt.applyFunc(config)
 }
 
 func HnswLevelMultiplier(value float32) HnswOption {

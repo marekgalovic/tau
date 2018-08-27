@@ -16,10 +16,38 @@ import (
     pb "github.com/marekgalovic/tau/protobuf";
 )
 
-type voronoiIndex struct {
-    baseIndex
+type VoronoiOption interface {
+    apply(*voronoiConfig)
+}
+
+type voronoiOption struct {
+    applyFunc func(*voronoiConfig)
+}
+
+func (opt *voronoiOption) apply(config *voronoiConfig) {
+    opt.applyFunc(config)
+}
+
+func VoronoiSplitFactor(value int) VoronoiOption {
+    return &voronoiOption{func(config *voronoiConfig) {
+        config.splitFactor = value
+    }}
+}
+
+func VoronoiMaxCellItems(value int) VoronoiOption {
+    return &voronoiOption{func(config *voronoiConfig) {
+        config.maxCellItems = value
+    }}
+}
+
+type voronoiConfig struct {
     splitFactor int
     maxCellItems int
+}
+
+type voronoiIndex struct {
+    baseIndex
+    config *voronoiConfig
     root *voronoiCell
 }
 
@@ -40,11 +68,20 @@ type itemCellDistance struct {
 // Every node of this tree (except leaf nodes) has number of children determined by
 // splitFactor argument.
 // Once there is <= maxCellItems in a node, it's considered to be a leaf node.
-func NewVoronoiIndex(size int, metric string, splitFactor, maxCellItems int) * voronoiIndex {
+func NewVoronoiIndex(size int, metric string, options ...VoronoiOption) * voronoiIndex {
+    config := &voronoiConfig {
+        splitFactor: 10,
+        maxCellItems: 1024,
+    }
+
+    for _, option := range options {
+        option.apply(config)
+    }
+
+
     return &voronoiIndex {
         baseIndex: newBaseIndex(size, metric),
-        splitFactor: splitFactor,
-        maxCellItems: maxCellItems,
+        config: config,
         root: &voronoiCell{},
     }
 }
@@ -67,8 +104,8 @@ func (index *voronoiIndex) ToProto() *pb.Index {
     proto := index.baseIndex.ToProto()
     proto.Options = &pb.Index_Voronoi {
         Voronoi: &pb.VoronoiIndexOptions {
-            SplitFactor: int32(index.splitFactor),
-            MaxCellItems: int32(index.maxCellItems),
+            SplitFactor: int32(index.config.splitFactor),
+            MaxCellItems: int32(index.config.maxCellItems),
         },
     }
     return proto
@@ -81,11 +118,11 @@ func (index *voronoiIndex) Build(ctx context.Context) {
 
     for stack.Len() > 0 {
         parent := stack.Pop().(*voronoiCell)
-        if len(parent.itemIds) <= index.maxCellItems {
+        if len(parent.itemIds) <= index.config.maxCellItems {
             continue
         }
 
-        initialCells := index.initializeCells(ctx, parent, index.splitFactor)
+        initialCells := index.initializeCells(ctx, parent, index.config.splitFactor)
         if initialCells == nil {
             return
         }
@@ -114,10 +151,10 @@ func (index *voronoiIndex) Save(writer io.Writer) error {
     }
 
     // Index specific headers
-    if err := binary.Write(writer, binary.LittleEndian, int32(index.splitFactor)); err != nil {
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.splitFactor)); err != nil {
         return err
     }
-    if err := binary.Write(writer, binary.LittleEndian, int32(index.maxCellItems)); err != nil {
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.maxCellItems)); err != nil {
         return err
     }
 
@@ -151,8 +188,8 @@ func (index *voronoiIndex) writeCells(writer io.Writer) error {
                 return err
             }
         } else {
-            for i := 0; i < index.splitFactor; i++ {
-                stack.Push(cell.children[index.splitFactor - 1 - i])
+            for i := 0; i < index.config.splitFactor; i++ {
+                stack.Push(cell.children[index.config.splitFactor - 1 - i])
             }
         }
     }
@@ -172,13 +209,13 @@ func (index *voronoiIndex) Load(reader io.Reader) error {
     if err := binary.Read(reader, binary.LittleEndian, &splitFactor); err != nil {
         return err
     }
-    index.splitFactor = int(splitFactor)
+    index.config.splitFactor = int(splitFactor)
 
     var maxCellItems int32
     if err := binary.Read(reader, binary.LittleEndian, &maxCellItems); err != nil {
         return err
     }
-    index.maxCellItems = int(maxCellItems)
+    index.config.maxCellItems = int(maxCellItems)
     
     return index.readCells(reader)
 }
@@ -216,10 +253,10 @@ func (index *voronoiIndex) readCells(reader io.Reader) error {
                 return err
             }
         } else {
-            cell.children = make([]*voronoiCell, index.splitFactor)
-            for i := 0; i < index.splitFactor; i++ {
-                cell.children[index.splitFactor - 1 - i] = &voronoiCell{}
-                stack.Push(cell.children[index.splitFactor - 1 - i])
+            cell.children = make([]*voronoiCell, index.config.splitFactor)
+            for i := 0; i < index.config.splitFactor; i++ {
+                cell.children[index.config.splitFactor - 1 - i] = &voronoiCell{}
+                stack.Push(cell.children[index.config.splitFactor - 1 - i])
             }
         }
     }
@@ -231,7 +268,7 @@ func (index *voronoiIndex) readCells(reader io.Reader) error {
 // node is < 10% then other nodes are also considered with lower priority.
 // Traversal stops once there are int(splitFactor / 5) * maxCellItems candidates.
 func (index *voronoiIndex) Search(ctx context.Context, k int, query math.Vector) SearchResult {
-    kNearest := int(index.splitFactor / 5)
+    kNearest := int(index.config.splitFactor / 5)
 
     stack := utils.NewStack()
     stack.Push(index.root)

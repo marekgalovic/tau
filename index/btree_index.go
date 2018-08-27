@@ -14,10 +14,38 @@ import (
     pb "github.com/marekgalovic/tau/protobuf";
 )
 
-type btreeIndex struct {
-    baseIndex
+type BtreeOption interface {
+    apply(*btreeConfig)
+}
+
+type btreeOption struct {
+    applyFunc func(*btreeConfig)
+}
+
+func (opt *btreeOption) apply(config *btreeConfig) {
+    opt.applyFunc(config)
+}
+
+func BtreeNumTrees(value int) BtreeOption {
+    return &btreeOption{func(config *btreeConfig) {
+        config.numTrees = value
+    }}
+}
+
+func BtreeMaxLeafItems(value int) BtreeOption {
+    return &btreeOption{func(config *btreeConfig) {
+        config.maxLeafItems = value
+    }}
+}
+
+type btreeConfig struct {
     numTrees int
     maxLeafItems int
+}
+
+type btreeIndex struct {
+    baseIndex
+    config *btreeConfig
     trees []*btreeNode
 }
 
@@ -38,15 +66,23 @@ type btreeSplitArgs struct {
 // Every node uniformly samples a pair of points and using a hyperplane equidistant
 // to these two points splits space based on signed point plane distance.
 // Once there is <= maxLeafItems in a node, it's considered to be a leaf node.
-func NewBtreeIndex(size int, metric string, numTrees, maxLeafItems int) *btreeIndex {
-    if numTrees < 1 {
+func NewBtreeIndex(size int, metric string, options ...BtreeOption) *btreeIndex {
+    config := &btreeConfig {
+        numTrees: 50,
+        maxLeafItems: 128,
+    }
+
+    for _, option := range options {
+        option.apply(config)
+    }
+
+    if config.numTrees < 1 {
         panic("Num trees has to be >= 1")
     }
 
     return &btreeIndex {
         baseIndex: newBaseIndex(size, metric),
-        numTrees: numTrees,
-        maxLeafItems: maxLeafItems,
+        config: config,
     }
 }
 
@@ -54,15 +90,15 @@ func (index *btreeIndex) ToProto() *pb.Index {
     proto := index.baseIndex.ToProto()
     proto.Options = &pb.Index_Btree {
         Btree: &pb.BtreeIndexOptions {
-            NumTrees: int32(index.numTrees),
-            MaxLeafItems: int32(index.maxLeafItems),
+            NumTrees: int32(index.config.numTrees),
+            MaxLeafItems: int32(index.config.maxLeafItems),
         },
     }
     return proto
 }
 
 func (index *btreeIndex) Reset() {
-    index.trees = make([]*btreeNode, index.numTrees)
+    index.trees = make([]*btreeNode, index.config.numTrees)
     index.baseIndex.Reset()
 }
 
@@ -70,10 +106,10 @@ func (index *btreeIndex) Reset() {
 // As individual trees are independent of each other they
 // are built in parallel.
 func (index *btreeIndex) Build(ctx context.Context) {
-    index.trees = make([]*btreeNode, index.numTrees)
-    treeChans := make([]chan *btreeNode, index.numTrees)
+    index.trees = make([]*btreeNode, index.config.numTrees)
+    treeChans := make([]chan *btreeNode, index.config.numTrees)
 
-    for t := 0; t < index.numTrees; t++ {
+    for t := 0; t < index.config.numTrees; t++ {
         treeChans[t] = make(chan *btreeNode)
         go func(treeChan chan *btreeNode) {
             treeChan <- newBtree(ctx, index)
@@ -96,10 +132,10 @@ func (index *btreeIndex) Save(writer io.Writer) error {
     }
 
     // Index specific headers
-    if err := binary.Write(writer, binary.LittleEndian, int32(index.numTrees)); err != nil {
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.numTrees)); err != nil {
         return err
     }
-    if err := binary.Write(writer, binary.LittleEndian, int32(index.maxLeafItems)); err != nil {
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.maxLeafItems)); err != nil {
         return err
     }
 
@@ -155,17 +191,17 @@ func (index *btreeIndex) Load(reader io.Reader) error {
     if err := binary.Read(reader, binary.LittleEndian, &numTrees); err != nil {
         return err
     }
-    index.numTrees = int(numTrees)
+    index.config.numTrees = int(numTrees)
 
     var maxLeafItems int32
     if err := binary.Read(reader, binary.LittleEndian, &maxLeafItems); err != nil {
         return err
     }
-    index.maxLeafItems = int(maxLeafItems)
+    index.config.maxLeafItems = int(maxLeafItems)
 
     // Index structure
-    index.trees = make([]*btreeNode, index.numTrees)
-    for i := 0; i < index.numTrees; i++ {
+    index.trees = make([]*btreeNode, index.config.numTrees)
+    for i := 0; i < index.config.numTrees; i++ {
         tree, err := index.readTree(reader)
         if err != nil {
             return err
@@ -343,7 +379,7 @@ func newBtree(ctx context.Context, index *btreeIndex) *btreeNode {
         args := stack.Pop().(*btreeSplitArgs)
 
         var leftIds, rightIds []int64
-        if len(args.leftIds) > index.maxLeafItems {
+        if len(args.leftIds) > index.config.maxLeafItems {
             wg.Add(1)
             go func() {
                 defer wg.Done()
@@ -354,7 +390,7 @@ func newBtree(ctx context.Context, index *btreeIndex) *btreeNode {
             args.parent.leftNode = &btreeNode{itemIds: args.leftIds}
         }
 
-        if len(args.rightIds) > index.maxLeafItems {
+        if len(args.rightIds) > index.config.maxLeafItems {
             wg.Add(1)
             go func() {
                 defer wg.Done()

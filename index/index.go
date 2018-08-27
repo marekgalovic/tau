@@ -70,9 +70,9 @@ func (i *baseIndex) ToProto() *pb.Index {
 func FromProto(proto *pb.Index) Index {
     switch options := proto.Options.(type) {
     case *pb.Index_Voronoi:
-        return NewVoronoiIndex(int(proto.Size), proto.Metric, int(options.Voronoi.SplitFactor), int(options.Voronoi.MaxCellItems))
+        return NewVoronoiIndex(int(proto.Size), proto.Metric, VoronoiSplitFactor(int(options.Voronoi.SplitFactor)), VoronoiMaxCellItems(int(options.Voronoi.MaxCellItems)))
     case *pb.Index_Btree:
-        return NewBtreeIndex(int(proto.Size), proto.Metric, int(options.Btree.NumTrees), int(options.Btree.MaxLeafItems))
+        return NewBtreeIndex(int(proto.Size), proto.Metric, BtreeNumTrees(int(options.Btree.NumTrees)), BtreeMaxLeafItems(int(options.Btree.MaxLeafItems)))
     default:
         panic("Invalid index type")
     }
