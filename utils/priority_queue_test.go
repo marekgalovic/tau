@@ -48,15 +48,18 @@ func TestPriorityQueueReverse(t *testing.T) {
     assert.Equal(t, 3, q.Len())
     assert.Equal(t, "foo", q.Peek().Value())
 
-    q = q.Reverse()
+    rq := q.Reverse()
+
+    assert.Equal(t, 3, rq.Len())
+    assert.Equal(t, "bar", rq.Peek().Value())
+
+    assert.Equal(t, "bar", rq.Pop().Value())
+    assert.Equal(t, "bag", rq.Pop().Value())
+    assert.Equal(t, "foo", rq.Pop().Value())
+    assert.Equal(t, 0, rq.Len())
 
     assert.Equal(t, 3, q.Len())
-    assert.Equal(t, "bar", q.Peek().Value())
-
-    assert.Equal(t, "bar", q.Pop().Value())
-    assert.Equal(t, "bag", q.Pop().Value())
-    assert.Equal(t, "foo", q.Pop().Value())
-    assert.Equal(t, 0, q.Len())
+    assert.Equal(t, "foo", q.Peek().Value())
 }
 
 func TestPriorityQueueToSlice(t *testing.T) {
@@ -72,4 +75,22 @@ func TestPriorityQueueToSlice(t *testing.T) {
     assert.Equal(t, "foo", s[0].Value())
     assert.Equal(t, "bag", s[1].Value())
     assert.Equal(t, "bar", s[2].Value())
+}
+
+func TestPriorityQueueValues(t *testing.T) {
+    q := NewMaxPriorityQueue()
+
+    q.Push(NewPriorityQueueItem(3, "foo"))
+    q.Push(NewPriorityQueueItem(1, "bar"))
+    q.Push(NewPriorityQueueItem(2, "bag"))
+
+    values := q.Values()
+
+    assert.Equal(t, 3, len(values))
+    assert.Equal(t, 3, q.Len())
+
+    valuesSet := NewSet(values...)
+    assert.True(t, valuesSet.Contains("foo"))
+    assert.True(t, valuesSet.Contains("bar"))
+    assert.True(t, valuesSet.Contains("bag"))
 }

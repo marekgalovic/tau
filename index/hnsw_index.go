@@ -105,10 +105,12 @@ type hnswIndex struct {
     entrypoint *hnswVertex
 }
 
+type hnswEdgeSet map[*hnswVertex]float32
+
 type hnswVertex struct {
     id int64
     level int
-    edges []utils.Set
+    edges []hnswEdgeSet
     edgeMutexes []*sync.RWMutex
 }
 
@@ -121,7 +123,7 @@ func NewHnswIndex(size int, space math.Space, options ...HnswOption) *hnswIndex 
     config := &hnswConfig {
         searchAlgorithm: HnswSearchSimple,
         levelMultiplier: -1,
-        ef: 50,
+        ef: 20,
         efConstruction: 200,
         m: 16,
         mMax: -1,
@@ -160,12 +162,12 @@ func newHnswVertex(id int64, level int) *hnswVertex {
     vertex := &hnswVertex {
         id: id,
         level: level,
-        edges: make([]utils.Set, level + 1),
+        edges: make([]hnswEdgeSet, level + 1),
         edgeMutexes: make([]*sync.RWMutex, level + 1),
     }
 
     for i := 0; i <= level; i++ {
-        vertex.edges[i] = utils.NewSet()
+        vertex.edges[i] = make(hnswEdgeSet)
         vertex.edgeMutexes[i] = &sync.RWMutex{}
     }
 
@@ -177,42 +179,28 @@ func (v *hnswVertex) edgesCount(level int) int {
     defer v.edgeMutexes[level].Unlock()
     v.edgeMutexes[level].Lock()
 
-    return v.edges[level].Len()
+    return len(v.edges[level])
 }
 
-func (v *hnswVertex) addEdge(level int, edge *hnswVertex) {
+func (v *hnswVertex) addEdge(level int, edge *hnswVertex, distance float32) {
     defer v.edgeMutexes[level].Unlock()
     v.edgeMutexes[level].Lock()
 
-    v.edges[level].Add(edge)
+    v.edges[level][edge] = distance
 }
 
-func (v *hnswVertex) getEdges(level int) utils.Set {
+func (v *hnswVertex) getEdges(level int) hnswEdgeSet {
     defer v.edgeMutexes[level].RUnlock()
     v.edgeMutexes[level].RLock()
 
     return v.edges[level]
 }
 
-func (v *hnswVertex) setEdges(level int, edges utils.Set) {
+func (v *hnswVertex) setEdges(level int, edges hnswEdgeSet) {
     defer v.edgeMutexes[level].Unlock()
     v.edgeMutexes[level].Lock()
 
     v.edges[level] = edges
-}
-
-func (v *hnswVertex) iterateEdges(level int) <-chan *hnswVertex {
-    result := make(chan *hnswVertex)
-    go func() {
-        defer v.edgeMutexes[level].RUnlock()
-        v.edgeMutexes[level].RLock()
-
-        for e := range v.edges[level].ToIterator() {
-            result <- e.(*hnswVertex)
-        }
-        close(result)
-    }()
-    return result
 }
 
 // Index
@@ -224,48 +212,9 @@ func (index *hnswIndex) Load(reader io.Reader) error {
     return nil
 }
 
-func (index *hnswIndex) Print() {
-    // log.Infof("Len: %d, Max Level: %d", index.Len(), index.maxLevel)
-
-    // visitedIds := utils.NewSet()
-    // for i := index.maxLevel; i >= 0; i-- {
-    //     log.Infof("Level: %d", i)
-    //     log.Infof("Number of entrypoint edges: %d", index.entrypoint.edges[i].Len())
-
-    //     vertexStack := utils.NewStack()
-    //     vertexStack.Push(index.entrypoint)
-    //     visited := utils.NewSet()
-    //     nodeDegrees := make([]int, 0)
-
-    //     for vertexStack.Len() > 0 {
-    //         vertex := vertexStack.Pop().(*hnswVertex)
-    //         visited.Add(vertex)
-    //         visitedIds.Add(vertex.itemId)
-    //         nodeDegrees = append(nodeDegrees, vertex.edges[i].Len())
-
-    //         for edge := range vertex.edges[i].ToIterator() {
-    //             neighbor := edge.(*hnswVertex)
-
-    //             if !visited.Contains(neighbor) {
-    //                 vertexStack.Push(neighbor)
-    //             }
-    //         }
-    //     }
-
-    //     var totalNodeDegree int = 0
-    //     for _, nd := range nodeDegrees {
-    //         totalNodeDegree += nd
-    //     }
-
-    //     log.Infof("Average node degree: %.4f", float64(totalNodeDegree) / float64(len(nodeDegrees)))
-    // }
-
-    // log.Infof("Visited nodes: %d", visitedIds.Len())
-}
-
 func (index *hnswIndex) Search(ctx context.Context, k int, query math.Vector) SearchResult {
     entrypoint := index.entrypoint
-    minDistance := math.EuclideanDistance(query, index.Get(index.entrypoint.id))
+    minDistance := index.space.Distance(query, index.Get(index.entrypoint.id))
     for l := index.maxLevel; l > 0; l-- {
         entrypoint, minDistance = index.greedyClosestNeighbor(query, entrypoint, minDistance, l)
     }
@@ -343,7 +292,7 @@ func (index *hnswIndex) addToGraph(id int64) {
     query := index.Get(id)
 
     entrypoint := index.entrypoint
-    minDistance := math.EuclideanDistance(query, index.Get(index.entrypoint.id))
+    minDistance := index.space.Distance(query, index.Get(index.entrypoint.id))
     for l := maxLevel; l > level; l-- {
         entrypoint, minDistance = index.greedyClosestNeighbor(query, entrypoint, minDistance, l)
     }
@@ -358,20 +307,13 @@ func (index *hnswIndex) addToGraph(id int64) {
             neighbors = index.selectNeighborsHeuristic(query, neighbors, index.config.m, l, true, true)
         }
 
-        // foundIds := utils.NewSet()
-
         for neighbors.Len() > 0 {
-            pqItem := neighbors.Pop()
-            neighbor := pqItem.Value().(*hnswVertex)
+            item := neighbors.Pop()
+            neighbor := item.Value().(*hnswVertex)
             entrypoint = neighbor
 
-            // if foundIds.Contains(neighbor.id) {
-            //     log.Fatal("Duplicate neighbor candidate id")
-            // }
-            // foundIds.Add(neighbor.id)
-
-            vertex.addEdge(l, neighbor)
-            neighbor.addEdge(l, vertex)
+            vertex.addEdge(l, neighbor, item.Priority())
+            neighbor.addEdge(l, vertex, item.Priority())
 
             mMax := index.config.mMax
             if l == 0 {
@@ -396,12 +338,15 @@ func (index *hnswIndex) randomLevel() int {
 func (index *hnswIndex) greedyClosestNeighbor(query math.Vector, entrypoint *hnswVertex, minDistance float32, level int) (*hnswVertex, float32) {
     for {
         var closestNeighbor *hnswVertex
-        for neighbor := range entrypoint.iterateEdges(level) {
-            if distance := math.EuclideanDistance(query, index.Get(neighbor.id)); distance < minDistance {
+
+        entrypoint.edgeMutexes[level].RLock()
+        for neighbor, _ := range entrypoint.edges[level] {
+            if distance := index.space.Distance(query, index.Get(neighbor.id)); distance < minDistance {
                 minDistance = distance
                 closestNeighbor = neighbor
             }
         }
+        entrypoint.edgeMutexes[level].RUnlock()
 
         if closestNeighbor == nil {
             break
@@ -414,7 +359,7 @@ func (index *hnswIndex) greedyClosestNeighbor(query math.Vector, entrypoint *hns
 }
 
 func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, ef, level int) utils.PriorityQueue {
-    entrypointDistance := math.EuclideanDistance(query, index.Get(entrypoint.id))
+    entrypointDistance := index.space.Distance(query, index.Get(entrypoint.id))
 
     candidateVertices := utils.NewMinPriorityQueue(utils.NewPriorityQueueItem(entrypointDistance, entrypoint))
     resultVertices := utils.NewMaxPriorityQueue(utils.NewPriorityQueueItem(entrypointDistance, entrypoint))
@@ -423,19 +368,20 @@ func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, e
 
     for candidateVertices.Len() > 0 {
         candidate := candidateVertices.Pop().Value().(*hnswVertex)
-        lowerBound := math.EuclideanDistance(query, index.Get(resultVertices.Peek().Value().(*hnswVertex).id))
+        lowerBound := index.space.Distance(query, index.Get(resultVertices.Peek().Value().(*hnswVertex).id))
 
-        if math.EuclideanDistance(query, index.Get(candidate.id)) > lowerBound {
+        if index.space.Distance(query, index.Get(candidate.id)) > lowerBound {
             break   
         }
 
-        for neighbor := range candidate.iterateEdges(level) {
+        candidate.edgeMutexes[level].RLock()
+        for neighbor, _ := range candidate.edges[level] {
             if visitedVertices.Contains(neighbor) {
                 continue
             }
             visitedVertices.Add(neighbor)
 
-            distance := math.EuclideanDistance(query, index.Get(neighbor.id))
+            distance := index.space.Distance(query, index.Get(neighbor.id))
             if (distance < lowerBound) || (resultVertices.Len() < ef) {
                 candidateVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
                 resultVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
@@ -445,6 +391,7 @@ func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, e
                 }
             }
         }
+        candidate.edgeMutexes[level].RUnlock()
     }
 
     // MaxPriorityQueue
@@ -461,22 +408,23 @@ func (index *hnswIndex) selectNeighbors(neighbors utils.PriorityQueue, k int) ut
 
 func (index *hnswIndex) selectNeighborsHeuristic(query math.Vector, neighbors utils.PriorityQueue, k, level int, extendCandidates, keepPruned bool) utils.PriorityQueue {
     candidateVertices := neighbors.Reverse()  // MinPriorityQueue
-    existingCandidates := utils.NewSet()
+    existingCandidates := utils.NewSet(neighbors.Values()...)
 
     if extendCandidates {
         for neighbors.Len() > 0 {
-            vertex := neighbors.Pop().Value().(*hnswVertex)
-            existingCandidates.Add(vertex)
+            candidate := neighbors.Pop().Value().(*hnswVertex)
 
-            for neighbor := range vertex.iterateEdges(level) {
+            candidate.edgeMutexes[level].RLock()
+            for neighbor, _ := range candidate.edges[level] {
                 if existingCandidates.Contains(neighbor) {
                     continue
                 }
 
-                distance := math.EuclideanDistance(query, index.Get(neighbor.id))
+                distance := index.space.Distance(query, index.Get(neighbor.id))
                 candidateVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
                 existingCandidates.Add(neighbor)
             }
+            candidate.edgeMutexes[level].RUnlock()
         }
     }
 
@@ -501,13 +449,13 @@ func (index *hnswIndex) selectNeighborsHeuristic(query math.Vector, neighbors ut
 func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
     neighborsQueue := utils.NewMaxPriorityQueue()
 
-    query := index.Get(vertex.id)
-    for neighbor := range vertex.iterateEdges(level) {
-        distance := math.EuclideanDistance(query, index.Get(neighbor.id))
-
+    vertex.edgeMutexes[level].RLock()
+    for neighbor, distance := range vertex.edges[level] {
         neighborsQueue.Push(utils.NewPriorityQueueItem(distance, neighbor))
     }
+    vertex.edgeMutexes[level].RUnlock()
 
+    query := index.Get(vertex.id)
     switch index.config.searchAlgorithm {
     case HnswSearchSimple:
         neighborsQueue = index.selectNeighbors(neighborsQueue, index.config.m)
@@ -515,10 +463,9 @@ func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
         neighborsQueue = index.selectNeighborsHeuristic(query, neighborsQueue, index.config.m, level, true, true)
     }
 
-    newNeighbors := utils.NewSet()
-
+    newNeighbors := make(hnswEdgeSet)
     for neighborsQueue.Len() > 0 {
-        newNeighbors.Add(neighborsQueue.Pop().Value())
+        newNeighbors[neighborsQueue.Pop().Value().(*hnswVertex)] = 0.0
     }
 
     vertex.setEdges(level, newNeighbors)

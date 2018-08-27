@@ -12,6 +12,7 @@ type PriorityQueue interface {
     Reverse() PriorityQueue
     ToSlice() []*PriorityQueueItem
     ToIterator() <-chan *PriorityQueueItem
+    Values() []interface{}
 }
 
 type priorityQueue struct {
@@ -124,6 +125,24 @@ func (pq *priorityQueue) ToIterator() <-chan *PriorityQueueItem {
         close(resultChan)
     }()
     return resultChan
+}
+
+func (pq *priorityQueue) Values() []interface{} {
+    var queue []*PriorityQueueItem
+    switch pq.queue.(type) {
+    case *minPriorityQueue:
+        queue = *pq.queue.(*minPriorityQueue)
+    case *maxPriorityQueue:
+        queue = *pq.queue.(*maxPriorityQueue)
+    default:
+        panic("Invalid queue type")
+    }
+
+    result := make([]interface{}, len(queue))
+    for i, item := range queue {
+        result[i] = item.Value()
+    }
+    return result
 }
 
 type minPriorityQueue []*PriorityQueueItem

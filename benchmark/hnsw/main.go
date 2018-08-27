@@ -88,22 +88,26 @@ func main() {
         }
         idx.Add(id, vec)
 
-        if id > 10000 {
+        if id > 25000 {
             break
         }
     }
     log.Infof("Index load time: %s", time.Since(start))
 
     if profile {
+        // CPU Profile
+        log.Info("Profiling enabled")
         cpuProfFile, err := os.Create("cpu.prof")
         if err != nil {
             log.Fatal(err)
         }
         pprof.StartCPUProfile(cpuProfFile)
     }
-    start = time.Now()
-    idx.Build(context.Background())
-    log.Infof("Index build time: %s", time.Since(start))
+    pprof.Do(context.Background(), pprof.Labels("func", "build"), func(ctx context.Context) {
+        start = time.Now()
+        idx.Build(ctx)
+        log.Infof("Index build time: %s", time.Since(start))
+    })
 
     // idx.Print()
     // log.Fatal()
@@ -139,11 +143,24 @@ func main() {
     tasksChan := make(chan searchTask, numCPUs)
     resultChan := make(chan searchTaskResult)
     ctx, stopSearchWorkers := context.WithCancel(context.Background())
-    for i := 0; i < numCPUs; i++ {
-        go searchWorker(ctx, idx, tasksChan, resultChan)
-    }
+    pprof.Do(ctx, pprof.Labels("func", "search"), func(ctx context.Context) {
+        for i := 0; i < numCPUs; i++ {
+            go searchWorker(ctx, idx, tasksChan, resultChan)
+        }
+    })
     if profile {
         pprof.StopCPUProfile()
+
+        // Memory profile
+        memProfFile, err := os.Create("memory.prof")
+        if err != nil {
+            log.Fatal(err)
+        }
+        runtime.GC()
+        if err := pprof.WriteHeapProfile(memProfFile); err != nil {
+            log.Fatal(err)
+        }
+        memProfFile.Close()
     }
 
     start = time.Now()
