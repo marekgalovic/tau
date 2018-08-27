@@ -7,8 +7,8 @@ import (
     "encoding/csv";
     "strconv";
     "context";
-    "sort";
     "runtime";
+    "runtime/pprof";
 
     "github.com/marekgalovic/tau/math";
     "github.com/marekgalovic/tau/index";
@@ -50,9 +50,8 @@ func searchWorker(ctx context.Context, idx index.Index, tasks chan searchTask, r
     for {
         select {
         case task := <-tasks:
-            neighbors := idx.Search(ctx, 10, task.query)
-            sort.Sort(neighbors)
             k := 100
+            neighbors := idx.Search(ctx, k, task.query)
             if k > len(neighbors) {
                 k = len(neighbors)
             }
@@ -64,6 +63,8 @@ func searchWorker(ctx context.Context, idx index.Index, tasks chan searchTask, r
 }
 
 func main() {
+    profile := true
+
     trainDataFile, err := os.Open("./benchmark/data/sift-128/train.csv")
     if err != nil {
         log.Fatal(err)
@@ -87,12 +88,19 @@ func main() {
         }
         idx.Add(id, vec)
 
-        // if id > 10000 {
-        //     break
-        // }
+        if id > 10000 {
+            break
+        }
     }
     log.Infof("Index load time: %s", time.Since(start))
 
+    if profile {
+        cpuProfFile, err := os.Create("cpu.prof")
+        if err != nil {
+            log.Fatal(err)
+        }
+        pprof.StartCPUProfile(cpuProfFile)
+    }
     start = time.Now()
     idx.Build(context.Background())
     log.Infof("Index build time: %s", time.Since(start))
@@ -126,12 +134,16 @@ func main() {
     log.Infof("Test data load time: %s", time.Since(start))
 
     numCPUs := runtime.NumCPU()
+    // numCPUs := 1
     log.Infof("Search threads: %d", numCPUs)
     tasksChan := make(chan searchTask, numCPUs)
     resultChan := make(chan searchTaskResult)
     ctx, stopSearchWorkers := context.WithCancel(context.Background())
     for i := 0; i < numCPUs; i++ {
         go searchWorker(ctx, idx, tasksChan, resultChan)
+    }
+    if profile {
+        pprof.StopCPUProfile()
     }
 
     start = time.Now()

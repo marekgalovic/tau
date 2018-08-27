@@ -58,3 +58,18 @@ func TestPriorityQueueReverse(t *testing.T) {
     assert.Equal(t, "foo", q.Pop().Value())
     assert.Equal(t, 0, q.Len())
 }
+
+func TestPriorityQueueToSlice(t *testing.T) {
+    q := NewMaxPriorityQueue()
+
+    q.Push(NewPriorityQueueItem(3, "foo"))
+    q.Push(NewPriorityQueueItem(1, "bar"))
+    q.Push(NewPriorityQueueItem(2, "bag"))
+
+    s := q.ToSlice()
+
+    assert.Equal(t, 3, len(s))
+    assert.Equal(t, "foo", s[0].Value())
+    assert.Equal(t, "bag", s[1].Value())
+    assert.Equal(t, "bar", s[2].Value())
+}

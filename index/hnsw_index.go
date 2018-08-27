@@ -5,6 +5,7 @@ import (
     "context";
     "sync";
     "time";
+    "runtime";
 
     "github.com/marekgalovic/tau/math";
     pb "github.com/marekgalovic/tau/protobuf";
@@ -278,14 +279,17 @@ func (index *hnswIndex) Search(ctx context.Context, k int, query math.Vector) Se
     result := make(SearchResult, k)
     for i := 0; i < k; i++ {
         item := neighbors.Pop()
-        result[i] = &pb.SearchResultItem{Id: item.Value().(*hnswVertex).id, Distance: item.Priority()}
+        result[i] = &pb.SearchResultItem {
+            Id: item.Value().(*hnswVertex).id,
+            Distance: item.Priority(),
+        }
     }
 
     return result
 }
 
 func (index *hnswIndex) Build(ctx context.Context) {
-    numThreads := 8
+    numThreads := runtime.NumCPU()
     workQueue := make(chan int64)
 
     ctx, cancel := context.WithCancel(ctx)
@@ -305,7 +309,7 @@ func (index *hnswIndex) Build(ctx context.Context) {
     }
 
     bar := progressBar.StartNew(index.Len())
-    bar.SetRefreshRate(5 * time.Second)
+    bar.SetRefreshRate(10 * time.Second)
 
     for id, _ := range index.items {
         bar.Increment()
@@ -354,9 +358,17 @@ func (index *hnswIndex) addToGraph(id int64) {
             neighbors = index.selectNeighborsHeuristic(query, neighbors, index.config.m, l, true, true)
         }
 
+        // foundIds := utils.NewSet()
+
         for neighbors.Len() > 0 {
-            neighbor := neighbors.Pop().Value().(*hnswVertex)
+            pqItem := neighbors.Pop()
+            neighbor := pqItem.Value().(*hnswVertex)
             entrypoint = neighbor
+
+            // if foundIds.Contains(neighbor.id) {
+            //     log.Fatal("Duplicate neighbor candidate id")
+            // }
+            // foundIds.Add(neighbor.id)
 
             vertex.addEdge(l, neighbor)
             neighbor.addEdge(l, vertex)
