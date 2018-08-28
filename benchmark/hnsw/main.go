@@ -90,9 +90,9 @@ func main() {
         }
         idx.Add(id, vec)
 
-        if id > 250000 {
-            break
-        }
+        // if id > 25000 {
+        //     break
+        // }
     }
     log.Infof("Index load time: %s", time.Since(start))
 

@@ -365,10 +365,11 @@ func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, e
     visitedVertices[entrypoint] = struct{}{}
 
     for candidateVertices.Len() > 0 {
-        candidate := candidateVertices.Pop().Value().(*hnswVertex)
-        lowerBound := index.space.Distance(query, index.Get(resultVertices.Peek().Value().(*hnswVertex).id))
+        candidateItem := candidateVertices.Pop()
+        candidate := candidateItem.Value().(*hnswVertex)
+        lowerBound := resultVertices.Peek().Priority()
 
-        if index.space.Distance(query, index.Get(candidate.id)) > lowerBound {
+        if candidateItem.Priority() > lowerBound {
             break   
         }
 
@@ -430,7 +431,6 @@ func (index *hnswIndex) selectNeighborsHeuristic(query math.Vector, neighbors ut
 
                 distance := index.space.Distance(query, index.Get(neighbor.id))
                 candidateVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
-
             }
             candidate.edgeMutexes[level].RUnlock()
         }
@@ -463,18 +463,17 @@ func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
     }
     vertex.edgeMutexes[level].RUnlock()
 
-    query := index.Get(vertex.id)
     switch index.config.searchAlgorithm {
     case HnswSearchSimple:
         neighborsQueue = index.selectNeighbors(neighborsQueue, index.config.m)
     case HnswSearchHeuristic:
+        query := index.Get(vertex.id)
         neighborsQueue = index.selectNeighborsHeuristic(query, neighborsQueue, index.config.m, level, true, true)
     }
 
-    newNeighbors := make(hnswEdgeSet)
-    for neighborsQueue.Len() > 0 {
-        pqItem := neighborsQueue.Pop()
-        newNeighbors[pqItem.Value().(*hnswVertex)] = pqItem.Priority()
+    newNeighbors := make(hnswEdgeSet, neighborsQueue.Len())
+    for _, item := range neighborsQueue.ToSlice() {
+        newNeighbors[item.Value().(*hnswVertex)] = item.Priority()
     }
 
     vertex.setEdges(level, newNeighbors)
