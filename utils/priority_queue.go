@@ -87,10 +87,7 @@ func (pq *priorityQueue) Peek() *PriorityQueueItem {
         panic("Empty priority queue")
     }
 
-    item := heap.Pop(pq.queue)
-    heap.Push(pq.queue, item)
-
-    return item.(*PriorityQueueItem)
+    return pq.ToSlice()[0]
 }
 
 func (pq *priorityQueue) Reverse() PriorityQueue {

@@ -25,8 +25,8 @@ func TestMinPriorityQueue(t *testing.T) {
 func TestMaxPriorityQueue(t *testing.T) {
     q := NewMaxPriorityQueue()
 
-    q.Push(NewPriorityQueueItem(3, "foo"))
     q.Push(NewPriorityQueueItem(1, "bar"))
+    q.Push(NewPriorityQueueItem(3, "foo"))
     q.Push(NewPriorityQueueItem(2, "bag"))
 
     assert.Equal(t, "foo", q.Peek().Value())

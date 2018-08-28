@@ -73,7 +73,7 @@ func main() {
     }
     defer trainDataFile.Close()
 
-    idx := index.NewHnswIndex(128, math.NewEuclideanSpace(), index.HnswSearchAlgorithm(index.HnswSearchHeuristic))
+    idx := index.NewHnswIndex(128, math.NewEuclideanSpace(), index.HnswSearchAlgorithm(index.HnswSearchSimple))
     trainDataReader := csv.NewReader(trainDataFile)
     start := time.Now()
     for {

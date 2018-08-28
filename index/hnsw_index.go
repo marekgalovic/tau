@@ -171,8 +171,8 @@ func newHnswVertex(id int64, level int) *hnswVertex {
 
 // Vertex
 func (v *hnswVertex) edgesCount(level int) int {
-    defer v.edgeMutexes[level].Unlock()
-    v.edgeMutexes[level].Lock()
+    defer v.edgeMutexes[level].RUnlock()
+    v.edgeMutexes[level].RLock()
 
     return len(v.edges[level])
 }
