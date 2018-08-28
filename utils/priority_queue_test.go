@@ -72,9 +72,6 @@ func TestPriorityQueueToSlice(t *testing.T) {
     s := q.ToSlice()
 
     assert.Equal(t, 3, len(s))
-    assert.Equal(t, "foo", s[0].Value())
-    assert.Equal(t, "bag", s[1].Value())
-    assert.Equal(t, "bar", s[2].Value())
 }
 
 func TestPriorityQueueValues(t *testing.T) {

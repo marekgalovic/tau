@@ -30,7 +30,7 @@ type threadSafeSet struct {
 }
 
 func NewSet(elements ...interface{}) Set {
-    set := make(baseSet)
+    set := make(baseSet, len(elements))
     for _, element := range elements {
         set.Add(element)
     }
@@ -153,7 +153,7 @@ func (s *baseSet) Rand() interface{} {
 
 func NewThreadSafeSet(elements ...interface{}) Set {
     set := &threadSafeSet {
-        baseSet: make(baseSet),
+        baseSet: make(baseSet, len(elements)),
         mutex: &sync.Mutex{},
     }
     for _, element := range elements {

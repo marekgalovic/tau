@@ -47,19 +47,21 @@ func parseLine(line []string) (int64, math.Vector, error) {
 }
 
 func searchWorker(ctx context.Context, idx index.Index, tasks chan searchTask, results chan searchTaskResult) {
-    for {
-        select {
-        case task := <-tasks:
-            k := 100
-            neighbors := idx.Search(ctx, k, task.query)
-            if k > len(neighbors) {
-                k = len(neighbors)
+    pprof.Do(ctx, pprof.Labels("func", "search"), func(ctx context.Context) {
+        for {
+            select {
+            case task := <-tasks:
+                k := 100
+                neighbors := idx.Search(ctx, k, task.query)
+                if k > len(neighbors) {
+                    k = len(neighbors)
+                }
+                results <- searchTaskResult{task.id, neighbors[:k]}
+            case <-ctx.Done():
+                return
             }
-            results <- searchTaskResult{task.id, neighbors[:k]}
-        case <-ctx.Done():
-            return
         }
-    }
+    })
 }
 
 func main() {
@@ -88,7 +90,7 @@ func main() {
         }
         idx.Add(id, vec)
 
-        if id > 25000 {
+        if id > 250000 {
             break
         }
     }
@@ -103,6 +105,7 @@ func main() {
         }
         pprof.StartCPUProfile(cpuProfFile)
     }
+
     pprof.Do(context.Background(), pprof.Labels("func", "build"), func(ctx context.Context) {
         start = time.Now()
         idx.Build(ctx)
@@ -143,24 +146,8 @@ func main() {
     tasksChan := make(chan searchTask, numCPUs)
     resultChan := make(chan searchTaskResult)
     ctx, stopSearchWorkers := context.WithCancel(context.Background())
-    pprof.Do(ctx, pprof.Labels("func", "search"), func(ctx context.Context) {
-        for i := 0; i < numCPUs; i++ {
-            go searchWorker(ctx, idx, tasksChan, resultChan)
-        }
-    })
-    if profile {
-        pprof.StopCPUProfile()
-
-        // Memory profile
-        memProfFile, err := os.Create("memory.prof")
-        if err != nil {
-            log.Fatal(err)
-        }
-        runtime.GC()
-        if err := pprof.WriteHeapProfile(memProfFile); err != nil {
-            log.Fatal(err)
-        }
-        memProfFile.Close()
+    for i := 0; i < numCPUs; i++ {
+        go searchWorker(ctx, idx, tasksChan, resultChan)
     }
 
     start = time.Now()
@@ -183,6 +170,21 @@ func main() {
     stopSearchWorkers()
     duration := time.Since(start)
     log.Infof("Search time: %s, qps: %.4f", duration, float64(len(nns)) / duration.Seconds())
+
+    if profile {
+        pprof.StopCPUProfile()
+
+        // Memory profile
+        memProfFile, err := os.Create("memory.prof")
+        if err != nil {
+            log.Fatal(err)
+        }
+        runtime.GC()
+        if err := pprof.WriteHeapProfile(memProfFile); err != nil {
+            log.Fatal(err)
+        }
+        memProfFile.Close()
+    }
 
     neighborsDataFile, err := os.Open("./benchmark/data/sift-128/neighbors.csv")
     if err != nil {

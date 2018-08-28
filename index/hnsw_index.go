@@ -114,11 +114,6 @@ type hnswVertex struct {
     edgeMutexes []*sync.RWMutex
 }
 
-type hnswVertexDistance struct {
-    vertex *hnswVertex
-    distance float32
-}
-
 func NewHnswIndex(size int, space math.Space, options ...HnswOption) *hnswIndex {
     config := &hnswConfig {
         searchAlgorithm: HnswSearchSimple,
@@ -219,7 +214,8 @@ func (index *hnswIndex) Search(ctx context.Context, k int, query math.Vector) Se
         entrypoint, minDistance = index.greedyClosestNeighbor(query, entrypoint, minDistance, l)
     }
 
-    neighbors := index.searchLevel(query, entrypoint, index.config.ef, 0).Reverse()
+    ef := int(math.Max(float32(index.config.ef), float32(k)))
+    neighbors := index.searchLevel(query, entrypoint, ef, 0).Reverse()
 
     if neighbors.Len() < k {
         k = neighbors.Len()
@@ -361,10 +357,12 @@ func (index *hnswIndex) greedyClosestNeighbor(query math.Vector, entrypoint *hns
 func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, ef, level int) utils.PriorityQueue {
     entrypointDistance := index.space.Distance(query, index.Get(entrypoint.id))
 
-    candidateVertices := utils.NewMinPriorityQueue(utils.NewPriorityQueueItem(entrypointDistance, entrypoint))
-    resultVertices := utils.NewMaxPriorityQueue(utils.NewPriorityQueueItem(entrypointDistance, entrypoint))
+    pqItem := utils.NewPriorityQueueItem(entrypointDistance, entrypoint)
+    candidateVertices := utils.NewMinPriorityQueue(pqItem)
+    resultVertices := utils.NewMaxPriorityQueue(pqItem)
 
-    visitedVertices := utils.NewSet(entrypoint)
+    visitedVertices := make(map[*hnswVertex]struct{}, ef * index.config.mMax0)
+    visitedVertices[entrypoint] = struct{}{}
 
     for candidateVertices.Len() > 0 {
         candidate := candidateVertices.Pop().Value().(*hnswVertex)
@@ -376,15 +374,16 @@ func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, e
 
         candidate.edgeMutexes[level].RLock()
         for neighbor, _ := range candidate.edges[level] {
-            if visitedVertices.Contains(neighbor) {
+            if _, exists := visitedVertices[neighbor]; exists {
                 continue
             }
-            visitedVertices.Add(neighbor)
+            visitedVertices[neighbor] = struct{}{}
 
             distance := index.space.Distance(query, index.Get(neighbor.id))
             if (distance < lowerBound) || (resultVertices.Len() < ef) {
-                candidateVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
-                resultVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
+                pqItem := utils.NewPriorityQueueItem(distance, neighbor)
+                candidateVertices.Push(pqItem)
+                resultVertices.Push(pqItem)
 
                 if resultVertices.Len() > ef {
                     resultVertices.Pop()
@@ -408,7 +407,15 @@ func (index *hnswIndex) selectNeighbors(neighbors utils.PriorityQueue, k int) ut
 
 func (index *hnswIndex) selectNeighborsHeuristic(query math.Vector, neighbors utils.PriorityQueue, k, level int, extendCandidates, keepPruned bool) utils.PriorityQueue {
     candidateVertices := neighbors.Reverse()  // MinPriorityQueue
-    existingCandidates := utils.NewSet(neighbors.Values()...)
+
+    existingCandidatesSize := neighbors.Len()
+    if extendCandidates {
+        existingCandidatesSize += neighbors.Len() * index.config.mMax0
+    }
+    existingCandidates := make(map[*hnswVertex]struct{}, existingCandidatesSize)
+    for _, neighbor := range neighbors.ToSlice() {
+        existingCandidates[neighbor.Value().(*hnswVertex)] = struct{}{}
+    }
 
     if extendCandidates {
         for neighbors.Len() > 0 {
@@ -416,13 +423,14 @@ func (index *hnswIndex) selectNeighborsHeuristic(query math.Vector, neighbors ut
 
             candidate.edgeMutexes[level].RLock()
             for neighbor, _ := range candidate.edges[level] {
-                if existingCandidates.Contains(neighbor) {
+                if _, exists := existingCandidates[neighbor]; exists {
                     continue
                 }
+                existingCandidates[neighbor] = struct{}{}
 
                 distance := index.space.Distance(query, index.Get(neighbor.id))
                 candidateVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
-                existingCandidates.Add(neighbor)
+
             }
             candidate.edgeMutexes[level].RUnlock()
         }
@@ -465,7 +473,8 @@ func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
 
     newNeighbors := make(hnswEdgeSet)
     for neighborsQueue.Len() > 0 {
-        newNeighbors[neighborsQueue.Pop().Value().(*hnswVertex)] = 0.0
+        pqItem := neighborsQueue.Pop()
+        newNeighbors[pqItem.Value().(*hnswVertex)] = pqItem.Priority()
     }
 
     vertex.setEdges(level, newNeighbors)

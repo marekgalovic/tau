@@ -108,14 +108,6 @@ func (pq *priorityQueue) Reverse() PriorityQueue {
     }
 }
 
-func (pq *priorityQueue) ToSlice() []*PriorityQueueItem {
-    result := make([]*PriorityQueueItem, pq.Len())
-    for i := 0; i < len(result); i++ {
-        result[i] = pq.Pop()
-    }
-    return result
-}
-
 func (pq *priorityQueue) ToIterator() <-chan *PriorityQueueItem {
     resultChan := make(chan *PriorityQueueItem)
     go func() {
@@ -127,17 +119,19 @@ func (pq *priorityQueue) ToIterator() <-chan *PriorityQueueItem {
     return resultChan
 }
 
-func (pq *priorityQueue) Values() []interface{} {
-    var queue []*PriorityQueueItem
+func (pq *priorityQueue) ToSlice() []*PriorityQueueItem {
     switch pq.queue.(type) {
     case *minPriorityQueue:
-        queue = *pq.queue.(*minPriorityQueue)
+        return *pq.queue.(*minPriorityQueue)
     case *maxPriorityQueue:
-        queue = *pq.queue.(*maxPriorityQueue)
+        return *pq.queue.(*maxPriorityQueue)
     default:
         panic("Invalid queue type")
     }
+}
 
+func (pq *priorityQueue) Values() []interface{} {
+    queue := pq.ToSlice()
     result := make([]interface{}, len(queue))
     for i, item := range queue {
         result[i] = item.Value()
