@@ -109,6 +109,7 @@ type hnswEdgeSet map[*hnswVertex]float32
 
 type hnswVertex struct {
     id int64
+    vector math.Vector
     level int
     edges []hnswEdgeSet
     edgeMutexes []*sync.RWMutex
@@ -153,9 +154,10 @@ func NewHnswIndex(size int, space math.Space, options ...HnswOption) *hnswIndex 
     }
 }
 
-func newHnswVertex(id int64, level int) *hnswVertex {
+func newHnswVertex(id int64, vector math.Vector, level int) *hnswVertex {
     vertex := &hnswVertex {
         id: id,
+        vector: vector,
         level: level,
         edges: make([]hnswEdgeSet, level + 1),
         edgeMutexes: make([]*sync.RWMutex, level + 1),
@@ -209,7 +211,7 @@ func (index *hnswIndex) Load(reader io.Reader) error {
 
 func (index *hnswIndex) Search(ctx context.Context, k int, query math.Vector) SearchResult {
     entrypoint := index.entrypoint
-    minDistance := index.space.Distance(query, index.Get(index.entrypoint.id))
+    minDistance := index.space.Distance(query, index.entrypoint.vector)
     for l := index.maxLevel; l > 0; l-- {
         entrypoint, minDistance = index.greedyClosestNeighbor(query, entrypoint, minDistance, l)
     }
@@ -256,10 +258,10 @@ func (index *hnswIndex) Build(ctx context.Context) {
     bar := progressBar.StartNew(index.Len())
     bar.SetRefreshRate(10 * time.Second)
 
-    for id, _ := range index.items {
+    for id, vec := range index.items {
         bar.Increment()
         if index.entrypoint == nil {
-            index.entrypoint = newHnswVertex(id, 0)
+            index.entrypoint = newHnswVertex(id, vec, 0)
             continue
         }
 
@@ -284,11 +286,11 @@ func (index *hnswIndex) addToGraph(id int64) {
         index.maxLevelMutex.Unlock()
     }
 
-    vertex := newHnswVertex(id, level)
     query := index.Get(id)
+    vertex := newHnswVertex(id, query, level)
 
     entrypoint := index.entrypoint
-    minDistance := index.space.Distance(query, index.Get(index.entrypoint.id))
+    minDistance := index.space.Distance(query, index.entrypoint.vector)
     for l := maxLevel; l > level; l-- {
         entrypoint, minDistance = index.greedyClosestNeighbor(query, entrypoint, minDistance, l)
     }
@@ -337,7 +339,7 @@ func (index *hnswIndex) greedyClosestNeighbor(query math.Vector, entrypoint *hns
 
         entrypoint.edgeMutexes[level].RLock()
         for neighbor, _ := range entrypoint.edges[level] {
-            if distance := index.space.Distance(query, index.Get(neighbor.id)); distance < minDistance {
+            if distance := index.space.Distance(query, neighbor.vector); distance < minDistance {
                 minDistance = distance
                 closestNeighbor = neighbor
             }
@@ -355,7 +357,7 @@ func (index *hnswIndex) greedyClosestNeighbor(query math.Vector, entrypoint *hns
 }
 
 func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, ef, level int) utils.PriorityQueue {
-    entrypointDistance := index.space.Distance(query, index.Get(entrypoint.id))
+    entrypointDistance := index.space.Distance(query, entrypoint.vector)
 
     pqItem := utils.NewPriorityQueueItem(entrypointDistance, entrypoint)
     candidateVertices := utils.NewMinPriorityQueue(pqItem)
@@ -380,7 +382,7 @@ func (index *hnswIndex) searchLevel(query math.Vector, entrypoint *hnswVertex, e
             }
             visitedVertices[neighbor] = struct{}{}
 
-            distance := index.space.Distance(query, index.Get(neighbor.id))
+            distance := index.space.Distance(query, neighbor.vector)
             if (distance < lowerBound) || (resultVertices.Len() < ef) {
                 pqItem := utils.NewPriorityQueueItem(distance, neighbor)
                 candidateVertices.Push(pqItem)
@@ -429,7 +431,7 @@ func (index *hnswIndex) selectNeighborsHeuristic(query math.Vector, neighbors ut
                 }
                 existingCandidates[neighbor] = struct{}{}
 
-                distance := index.space.Distance(query, index.Get(neighbor.id))
+                distance := index.space.Distance(query, neighbor.vector)
                 candidateVertices.Push(utils.NewPriorityQueueItem(distance, neighbor))
             }
             candidate.edgeMutexes[level].RUnlock()
@@ -467,8 +469,7 @@ func (index *hnswIndex) pruneNeighbors(vertex *hnswVertex, k, level int) {
     case HnswSearchSimple:
         neighborsQueue = index.selectNeighbors(neighborsQueue, index.config.m)
     case HnswSearchHeuristic:
-        query := index.Get(vertex.id)
-        neighborsQueue = index.selectNeighborsHeuristic(query, neighborsQueue, index.config.m, level, true, true)
+        neighborsQueue = index.selectNeighborsHeuristic(vertex.vector, neighborsQueue, index.config.m, level, true, true)
     }
 
     newNeighbors := make(hnswEdgeSet, neighborsQueue.Len())
