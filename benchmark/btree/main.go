@@ -50,7 +50,7 @@ func searchWorker(ctx context.Context, btreeIndex index.Index, tasks chan search
     for {
         select {
         case task := <-tasks:
-            neighbors := btreeIndex.Search(ctx, task.query)
+            neighbors := btreeIndex.Search(ctx, 100, task.query)
             sort.Sort(neighbors)
             k := 100
             if k > len(neighbors) {
@@ -70,7 +70,7 @@ func main() {
     }
     defer trainDataFile.Close()
 
-    btreeIndex := index.NewBtreeIndex(128, "Euclidean", 50, 64)
+    btreeIndex := index.NewBtreeIndex(128, math.NewEuclideanSpace(), index.BtreeNumTrees(50), index.BtreeMaxLeafItems(128))
     trainDataReader := csv.NewReader(trainDataFile)
     start := time.Now()
     for {

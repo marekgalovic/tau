@@ -277,7 +277,7 @@ func (index *btreeIndex) Search(ctx context.Context, k int, query math.Vector) S
         case resultSlice := <- resultsChan:
             for _, id := range resultSlice {
                 resultIds.Add(id)
-                if resultIds.Len() >= k {
+                if resultIds.Len() >= k * index.config.maxLeafItems {
                     break SEARCH_LOOP
                 }
             }
