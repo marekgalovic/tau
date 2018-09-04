@@ -90,21 +90,11 @@ func main() {
         }
         idx.Add(id, vec)
 
-        // if id > 25000 {
+        // if id > 100000 {
         //     break
         // }
     }
     log.Infof("Index load time: %s", time.Since(start))
-
-    if profile {
-        // CPU Profile
-        log.Info("Profiling enabled")
-        cpuProfFile, err := os.Create("cpu.prof")
-        if err != nil {
-            log.Fatal(err)
-        }
-        pprof.StartCPUProfile(cpuProfFile)
-    }
 
     pprof.Do(context.Background(), pprof.Labels("func", "build"), func(ctx context.Context) {
         start = time.Now()
@@ -112,8 +102,29 @@ func main() {
         log.Infof("Index build time: %s", time.Since(start))
     })
 
-    // idx.Print()
-    // log.Fatal()
+    indexFile, err := os.Create("/tmp/hnsw.ti")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    start = time.Now()
+    if err := idx.Save(indexFile); err != nil {
+        log.Fatalf("Failed to save index: %v", err)
+    }
+    log.Infof("Index saved: %s", time.Since(start))
+    indexFile.Close()
+
+    indexFile, err = os.Open("/tmp/hnsw.ti")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    start = time.Now()
+    if err := idx.Load(indexFile); err != nil {
+        log.Fatalf("Failed to load index: %v", err)
+    }
+    log.Infof("Index loaded: %s", time.Since(start))
+    indexFile.Close()
 
     testDataFile, err := os.Open("./benchmark/data/sift-128/test.csv")
     if err != nil {
@@ -146,6 +157,15 @@ func main() {
     tasksChan := make(chan searchTask, numCPUs)
     resultChan := make(chan searchTaskResult)
     ctx, stopSearchWorkers := context.WithCancel(context.Background())
+    if profile {
+        // CPU Profile
+        log.Info("Profiling enabled")
+        cpuProfFile, err := os.Create("cpu.prof")
+        if err != nil {
+            log.Fatal(err)
+        }
+        pprof.StartCPUProfile(cpuProfFile)
+    }
     for i := 0; i < numCPUs; i++ {
         go searchWorker(ctx, idx, tasksChan, resultChan)
     }

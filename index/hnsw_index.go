@@ -1,11 +1,14 @@
 package index
 
 import (
+    "fmt";
     "io";
+    "bufio";
     "context";
     "sync";
     "time";
     "runtime";
+    "encoding/binary";
 
     "github.com/marekgalovic/tau/math";
     pb "github.com/marekgalovic/tau/protobuf";
@@ -103,6 +106,8 @@ type hnswIndex struct {
     maxLevel int
     maxLevelMutex *sync.Mutex
     entrypoint *hnswVertex
+    vertices []*hnswVertex
+    verticesMutex *sync.Mutex
 }
 
 type hnswEdgeSet map[*hnswVertex]float32
@@ -151,6 +156,8 @@ func NewHnswIndex(size int, space math.Space, options ...HnswOption) *hnswIndex 
         baseIndex: newBaseIndex(size, space),
         config: config,
         maxLevelMutex: &sync.Mutex{},
+        vertices: make([]*hnswVertex, 0),
+        verticesMutex: &sync.Mutex{},
     }
 }
 
@@ -202,10 +209,196 @@ func (v *hnswVertex) setEdges(level int, edges hnswEdgeSet) {
 
 // Index
 func (index *hnswIndex) Save(writer io.Writer) error {
+    if index.entrypoint == nil {
+        return fmt.Errorf("Cannot save empty index. Call .Build() first.")
+    }
+
+    if err := index.writeHeader(writer, []byte("tauHNW")); err != nil {
+        return err
+    }
+
+    // Index specific headers
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.searchAlgorithm)); err != nil {
+        return err
+    }
+
+    if err := binary.Write(writer, binary.LittleEndian, index.config.levelMultiplier); err != nil {
+        return err
+    }
+
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.ef)); err != nil {
+        return err
+    }
+
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.efConstruction)); err != nil {
+        return err
+    }
+
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.m)); err != nil {
+        return err
+    }
+
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.mMax)); err != nil {
+        return err
+    }
+
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.config.mMax0)); err != nil {
+        return err
+    }
+
+    if err := binary.Write(writer, binary.LittleEndian, int32(index.maxLevel)); err != nil {
+        return err
+    }
+
+    // Index body
+    if err := binary.Write(writer, binary.LittleEndian, index.entrypoint.id); err != nil {
+        return err
+    }
+
+    bufWriter := bufio.NewWriter(writer)
+    for _, vertex := range index.vertices {
+        if err := binary.Write(bufWriter, binary.LittleEndian, vertex.id); err != nil {
+            return err
+        }
+        if err := binary.Write(bufWriter, binary.LittleEndian, int32(vertex.level)); err != nil {
+            return err
+        }
+        for l := vertex.level; l >= 0; l-- {
+            if err := binary.Write(bufWriter, binary.LittleEndian, int32(len(vertex.edges[l]))); err != nil {
+                return err
+            }
+
+            for neighbor, distance := range vertex.edges[l] {
+                if err := binary.Write(bufWriter, binary.LittleEndian, neighbor.id); err != nil {
+                    return err
+                }
+                if err := binary.Write(bufWriter, binary.LittleEndian, distance); err != nil {
+                    return err
+                }
+            }
+        }
+
+        if err := bufWriter.Flush(); err != nil {
+            return err
+        }
+        bufWriter.Reset(writer)
+    }
+
     return nil
 }
 
 func (index *hnswIndex) Load(reader io.Reader) error {
+    indexType, err := index.readHeader(reader)
+    if err != nil {
+        return err
+    }
+
+    if string(indexType) != "tauHNW" {
+        return fmt.Errorf("Invalid index type `%s`", indexType)
+    }
+
+    // Index specific headers
+    var searchAlgorithm int32
+    if err := binary.Read(reader, binary.LittleEndian, &searchAlgorithm); err != nil {
+        return err
+    }
+    index.config.searchAlgorithm = hnswSearchAlgorithm(searchAlgorithm)
+
+    if err := binary.Read(reader, binary.LittleEndian, &index.config.levelMultiplier); err != nil {
+        return err
+    }
+
+    var ef int32
+    if err := binary.Read(reader, binary.LittleEndian, &ef); err != nil {
+        return err
+    }
+    index.config.ef = int(ef)
+
+    var efConstruction int32
+    if err := binary.Read(reader, binary.LittleEndian, &efConstruction); err != nil {
+        return err
+    }
+    index.config.efConstruction = int(efConstruction)
+
+    var m int32
+    if err := binary.Read(reader, binary.LittleEndian, &m); err != nil {
+        return err
+    }
+    index.config.m = int(m)
+
+    var mMax int32
+    if err := binary.Read(reader, binary.LittleEndian, &mMax); err != nil {
+        return err
+    }
+    index.config.mMax = int(mMax)
+
+    var mMax0 int32
+    if err := binary.Read(reader, binary.LittleEndian, &mMax0); err != nil {
+        return err
+    }
+    index.config.mMax0 = int(mMax0)
+
+    var maxLevel int32
+    if err := binary.Read(reader, binary.LittleEndian, &maxLevel); err != nil {
+        return err
+    }
+    index.maxLevel = int(maxLevel)
+
+    // Index body
+    var entrypointId int64
+    if err := binary.Read(reader, binary.LittleEndian, &entrypointId); err != nil {
+        return err
+    }
+
+    vertices := make(map[int64]*hnswVertex, index.Len())
+    for id, vector := range index.items {
+        vertices[id] = &hnswVertex{id: id, vector: vector}
+    }
+    index.entrypoint = vertices[entrypointId]
+
+    reader = bufio.NewReader(reader)
+    index.vertices = make([]*hnswVertex, index.Len())
+    for i := 0; i < index.Len(); i++ {
+        var id int64
+        if err := binary.Read(reader, binary.LittleEndian, &id); err != nil {
+            return err
+        }
+        vertex := vertices[id]
+        index.vertices[i] = vertex
+
+        var level int32
+        if err := binary.Read(reader, binary.LittleEndian, &level); err != nil {
+            return err
+        }
+
+        vertex.level = int(level)
+        vertex.edges = make([]hnswEdgeSet, level + 1)
+        vertex.edgeMutexes = make([]*sync.RWMutex, level + 1)
+
+        for l := level; l >= 0; l-- {
+            var numEdges int32
+            if err := binary.Read(reader, binary.LittleEndian, &numEdges); err != nil {
+                return err
+            }
+
+            vertex.edges[l] = make(hnswEdgeSet, numEdges)
+            vertex.edgeMutexes[l] = &sync.RWMutex{}
+
+            for j := 0; j < int(numEdges); j++ {
+                var neighborId int64
+                if err := binary.Read(reader, binary.LittleEndian, &neighborId); err != nil {
+                    return err
+                }
+                var distance float32
+                if err := binary.Read(reader, binary.LittleEndian, &distance); err != nil {
+                    return err
+                }
+
+                vertex.edges[l][vertices[neighborId]] = distance
+            }
+        }
+    }
+
     return nil
 }
 
@@ -262,6 +455,7 @@ func (index *hnswIndex) Build(ctx context.Context) {
         bar.Increment()
         if index.entrypoint == nil {
             index.entrypoint = newHnswVertex(id, vec, 0)
+            index.vertices = append(index.vertices, index.entrypoint)
             continue
         }
 
@@ -288,6 +482,10 @@ func (index *hnswIndex) addToGraph(id int64) {
 
     query := index.Get(id)
     vertex := newHnswVertex(id, query, level)
+
+    index.verticesMutex.Lock()
+    index.vertices = append(index.vertices, vertex)
+    index.verticesMutex.Unlock()
 
     entrypoint := index.entrypoint
     minDistance := index.space.Distance(query, index.entrypoint.vector)
