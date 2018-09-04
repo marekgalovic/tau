@@ -69,9 +69,31 @@ func (i *baseIndex) ToProto() *pb.Index {
 func FromProto(proto *pb.Index) Index {
     switch options := proto.Options.(type) {
     case *pb.Index_Voronoi:
-        return NewVoronoiIndex(int(proto.Size), math.NewSpaceFromProto(proto.Space), VoronoiSplitFactor(int(options.Voronoi.SplitFactor)), VoronoiMaxCellItems(int(options.Voronoi.MaxCellItems)))
+        return NewVoronoiIndex(
+            int(proto.Size),
+            math.NewSpaceFromProto(proto.Space),
+            VoronoiSplitFactor(int(options.Voronoi.SplitFactor)),
+            VoronoiMaxCellItems(int(options.Voronoi.MaxCellItems)),
+        )
     case *pb.Index_Btree:
-        return NewBtreeIndex(int(proto.Size), math.NewSpaceFromProto(proto.Space), BtreeNumTrees(int(options.Btree.NumTrees)), BtreeMaxLeafItems(int(options.Btree.MaxLeafItems)))
+        return NewBtreeIndex(
+            int(proto.Size),
+            math.NewSpaceFromProto(proto.Space),
+            BtreeNumTrees(int(options.Btree.NumTrees)),
+            BtreeMaxLeafItems(int(options.Btree.MaxLeafItems)),
+        )
+    case *pb.Index_Hnsw:
+        return NewHnswIndex(
+            int(proto.Size),
+            math.NewSpaceFromProto(proto.Space),
+            HnswSearchAlgorithm(hnswSearchAlgorithm(options.Hnsw.SearchAlgorithm)),
+            HnswLevelMultiplier(options.Hnsw.LevelMultiplier),
+            HnswEf(int(options.Hnsw.Ef)),
+            HnswEfConstruction(int(options.Hnsw.EfConstruction)),
+            HnswM(int(options.Hnsw.M)),
+            HnswMmax(int(options.Hnsw.MMax)),
+            HnswMmax0(int(options.Hnsw.MMax_0)),
+        )
     default:
         panic("Invalid index type")
     }

@@ -22,6 +22,7 @@ It has these top-level messages:
 	ListPartitionsRequest
 	BtreeIndexOptions
 	VoronoiIndexOptions
+	HnswIndexOptions
 	Index
 	CsvDataset
 	JsonDataset

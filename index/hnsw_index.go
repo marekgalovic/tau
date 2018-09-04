@@ -208,6 +208,35 @@ func (v *hnswVertex) setEdges(level int, edges hnswEdgeSet) {
 }
 
 // Index
+func (index *hnswIndex) ToProto() *pb.Index {
+    proto := index.baseIndex.ToProto()
+    proto.Options = &pb.Index_Hnsw {
+        Hnsw: &pb.HnswIndexOptions {
+            SearchAlgorithm: pb.HnswSearchAlgorithm(index.config.searchAlgorithm),
+            LevelMultiplier: index.config.levelMultiplier,
+            Ef: int32(index.config.ef),
+            EfConstruction: int32(index.config.efConstruction),
+            M: int32(index.config.m),
+            MMax: int32(index.config.mMax),
+            MMax_0: int32(index.config.mMax0),
+        },
+    }
+
+    return proto
+}
+
+func (index *hnswIndex) Reset() {
+    index.verticesMutex.Lock()
+    defer index.verticesMutex.Unlock()
+    index.maxLevelMutex.Lock()
+    defer index.maxLevelMutex.Unlock()
+
+    index.maxLevel = 0
+    index.entrypoint = nil
+    index.vertices = make([]*hnswVertex, 0)
+    index.baseIndex.Reset()
+}
+
 func (index *hnswIndex) Save(writer io.Writer) error {
     if index.entrypoint == nil {
         return fmt.Errorf("Cannot save empty index. Call .Build() first.")

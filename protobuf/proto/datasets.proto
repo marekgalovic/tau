@@ -44,12 +44,28 @@ message VoronoiIndexOptions {
     int32 max_cell_items    = 2;
 }
 
+enum HnswSearchAlgorithm {
+    SIMPLE = 0;
+    HEURISTIC = 1;
+}
+
+message HnswIndexOptions {
+    HnswSearchAlgorithm search_algorithm = 1;
+    float level_multiplier = 2;
+    int32 ef = 3;
+    int32 ef_construction = 4;
+    int32 m = 5;
+    int32 m_max = 6;
+    int32 m_max_0 = 7;
+}
+
 message Index {
-    int32 size      = 2;
-    SpaceType space = 3;
+    int32 size      = 1;
+    SpaceType space = 2;
     oneof options {
-        BtreeIndexOptions btree     = 4;
-        VoronoiIndexOptions voronoi = 5;
+        BtreeIndexOptions btree     = 3;
+        VoronoiIndexOptions voronoi = 4;
+        HnswIndexOptions hnsw       = 5;
     };
 }
 
