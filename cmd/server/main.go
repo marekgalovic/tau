@@ -11,7 +11,11 @@ import (
 )
 
 func main() {
-    config := tau.NewConfig()
+    config, err := tau.NewConfig()
+    if err != nil {
+        log.Fatal(err)
+    }
+
     uuid, err := utils.VolatileNodeUuid()
     if err != nil {
         log.Fatal(err)
