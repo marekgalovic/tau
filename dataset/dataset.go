@@ -147,7 +147,7 @@ func (d *dataset) SearchPartitions(k int32, query math.Vector, partitions []stri
             return nil, fmt.Errorf("No index found for dataset: `%s`, partition: `%s`", d.Meta().GetName(), partitionId)
         }
 
-        result = append(result, partitionIndex.Search(d.ctx, query)...)
+        result = append(result, partitionIndex.Search(d.ctx, int(k), query)...)
     }
     sort.Sort(result)
 

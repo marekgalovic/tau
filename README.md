@@ -2,7 +2,8 @@
 TAU is a distributed approximate nearest neighbors search library written in GO. Data is organized into datasets that are composed of partitions (individual files). Partitions are distributed across nodes in the cluster and can be replicated for speed and availability.
 
 ### Index
-TAU currently supports two index types both of which use trees as an underlying data structure.
+TAU currently supports these index types:
+- **HNSW** constructs a Hierarchical Navigable Small World Graph that separates vertex connections on different layers of the graph. The lower the layer in the graph, the larger average degree a vertex has. Implemented according to [this paper](https://arxiv.org/pdf/1603.09320.pdf).
 - **BTree** constructs a binary search tree using random projections. When building the tree, a random pair of points is sampled and a hyperplane equidistant to these points is computed. Samples are then split based on the sign of the distance to the hyperplane. This process continues until the number of candidate samples is less than leaf size threshold.
 - **Voronoi** constructs a search tree using K-Means++ algorithm. At each level of the tree, samples are split into k clusters until the number of candidate samples is less than leaf size threshold.
 
