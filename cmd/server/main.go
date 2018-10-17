@@ -1,11 +1,11 @@
 package main
 
 import (
-    "github.com/marekgalovic/tau";
-    "github.com/marekgalovic/tau/cluster";
-    "github.com/marekgalovic/tau/dataset";
-    "github.com/marekgalovic/tau/storage";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg";
+    "github.com/marekgalovic/tau/pkg/cluster";
+    "github.com/marekgalovic/tau/pkg/dataset";
+    "github.com/marekgalovic/tau/pkg/storage";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     log "github.com/Sirupsen/logrus";
 )

@@ -5,10 +5,10 @@ import (
     "context";
     "testing";
 
-    "github.com/marekgalovic/tau/cluster";
-    "github.com/marekgalovic/tau/storage";
-    pb "github.com/marekgalovic/tau/protobuf";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/cluster";
+    "github.com/marekgalovic/tau/pkg/storage";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     // "github.com/golang/protobuf/proto";
     "github.com/stretchr/testify/suite";

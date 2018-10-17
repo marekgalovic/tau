@@ -2,7 +2,8 @@ install:
 	go get -t -d -v ./...
 
 build:
-	go build -o ./bin/server ./cmd/server/main.go
+	GOOS=linux GOARCH=amd64 go build -o ./bin/tau_server-linux-amd64 ./cmd/server/main.go
+	GOOS=darwin GOARCH=amd64 go build -o ./bin/tau_server-darwin-amd64 ./cmd/server/main.go
 
 compile_protos:
 	protoc -I ./protobuf/proto --go_out=plugins=grpc:./protobuf ./protobuf/proto/*.proto

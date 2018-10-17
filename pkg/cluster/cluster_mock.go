@@ -6,7 +6,7 @@ package cluster
 
 import (
 	gomock "github.com/golang/mock/gomock"
-	utils "github.com/marekgalovic/tau/utils"
+	utils "github.com/marekgalovic/tau/pkg/utils"
 	grpc "google.golang.org/grpc"
 	reflect "reflect"
 )

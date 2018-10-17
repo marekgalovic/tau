@@ -7,12 +7,12 @@ import (
     "path/filepath";
     "sort";
 
-    "github.com/marekgalovic/tau/math";
-    "github.com/marekgalovic/tau/index";
-    "github.com/marekgalovic/tau/cluster";
-    "github.com/marekgalovic/tau/storage";
-    pb "github.com/marekgalovic/tau/protobuf";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/math";
+    "github.com/marekgalovic/tau/pkg/index";
+    "github.com/marekgalovic/tau/pkg/cluster";
+    "github.com/marekgalovic/tau/pkg/storage";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     "github.com/golang/protobuf/proto";
     log "github.com/Sirupsen/logrus";

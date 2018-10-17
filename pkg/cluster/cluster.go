@@ -7,8 +7,8 @@ import (
     "path/filepath";
     "time";
 
-    pb "github.com/marekgalovic/tau/protobuf";
-    "github.com/marekgalovic/tau/utils";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     "github.com/samuel/go-zookeeper/zk";
     "github.com/golang/protobuf/proto";

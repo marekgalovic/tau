@@ -4,7 +4,7 @@ import (
     "io";
     "context";
     
-    pb "github.com/marekgalovic/tau/protobuf";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
 
     "google.golang.org/grpc"
 )

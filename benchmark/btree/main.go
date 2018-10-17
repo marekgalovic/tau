@@ -10,10 +10,10 @@ import (
     "sort";
     "runtime";
 
-    "github.com/marekgalovic/tau/math";
-    "github.com/marekgalovic/tau/index";
-    pb "github.com/marekgalovic/tau/protobuf";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/math";
+    "github.com/marekgalovic/tau/pkg/index";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     log "github.com/Sirupsen/logrus";
 )

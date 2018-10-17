@@ -3,7 +3,7 @@ package main
 import (
     // "time";
 
-    pb "github.com/marekgalovic/tau/protobuf";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
     "github.com/marekgalovic/tau/client";
 
     "google.golang.org/grpc";

@@ -5,7 +5,7 @@ import (
     "sort";
     "errors";
 
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/utils";
 )
 
 type hrwNodeScore struct {

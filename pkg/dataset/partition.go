@@ -12,12 +12,12 @@ import (
     "time";
     "errors";
 
-    "github.com/marekgalovic/tau/index";
-    "github.com/marekgalovic/tau/cluster";
-    "github.com/marekgalovic/tau/storage";
-    "github.com/marekgalovic/tau/storage/serde";
-    pb "github.com/marekgalovic/tau/protobuf";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/index";
+    "github.com/marekgalovic/tau/pkg/cluster";
+    "github.com/marekgalovic/tau/pkg/storage";
+    "github.com/marekgalovic/tau/pkg/storage/serde";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     "github.com/samuel/go-zookeeper/zk";
     log "github.com/Sirupsen/logrus";

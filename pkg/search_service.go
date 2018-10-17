@@ -3,9 +3,9 @@ package tau
 import (
     "fmt";
 
-    "github.com/marekgalovic/tau/dataset";
-    "github.com/marekgalovic/tau/math";
-    pb "github.com/marekgalovic/tau/protobuf";
+    "github.com/marekgalovic/tau/pkg/dataset";
+    "github.com/marekgalovic/tau/pkg/math";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
 )
 
 type searchService struct {

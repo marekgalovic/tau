@@ -7,8 +7,8 @@ import (
     "time";
     "strings";
 
-    "github.com/marekgalovic/tau/dataset";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/dataset";
+    "github.com/marekgalovic/tau/pkg/utils";
 )
 
 type Config struct {

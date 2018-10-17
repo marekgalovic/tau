@@ -6,9 +6,9 @@ package dataset
 
 import (
 	gomock "github.com/golang/mock/gomock"
-	math "github.com/marekgalovic/tau/math"
-	protobuf "github.com/marekgalovic/tau/protobuf"
-	utils "github.com/marekgalovic/tau/utils"
+	math "github.com/marekgalovic/tau/pkg/math"
+	protobuf "github.com/marekgalovic/tau/pkg/protobuf"
+	utils "github.com/marekgalovic/tau/pkg/utils"
 	reflect "reflect"
 )
 

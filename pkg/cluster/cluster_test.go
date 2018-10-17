@@ -6,7 +6,7 @@ import (
     "strings";
     "testing";
 
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     "github.com/stretchr/testify/suite";
     "github.com/satori/go.uuid";

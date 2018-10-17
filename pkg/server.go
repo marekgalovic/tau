@@ -3,10 +3,10 @@ package tau
 import (
     "net";
 
-    "github.com/marekgalovic/tau/storage";
-    "github.com/marekgalovic/tau/dataset";
-    pb "github.com/marekgalovic/tau/protobuf";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/storage";
+    "github.com/marekgalovic/tau/pkg/dataset";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
+    "github.com/marekgalovic/tau/pkg/utils";
 
     "google.golang.org/grpc"
 )

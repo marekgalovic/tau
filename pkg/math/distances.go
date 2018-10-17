@@ -1,7 +1,7 @@
 package math
 
 import (
-    pb "github.com/marekgalovic/tau/protobuf";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
 )
 
 type Space interface {

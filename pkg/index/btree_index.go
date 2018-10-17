@@ -9,9 +9,9 @@ import (
     "context";
     "encoding/binary";
 
-    "github.com/marekgalovic/tau/math";
-    "github.com/marekgalovic/tau/utils";
-    pb "github.com/marekgalovic/tau/protobuf";
+    "github.com/marekgalovic/tau/pkg/math";
+    "github.com/marekgalovic/tau/pkg/utils";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
 )
 
 type BtreeOption interface {

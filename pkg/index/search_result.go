@@ -1,9 +1,9 @@
 package index
 
 import (
-    "github.com/marekgalovic/tau/math";
-    pb "github.com/marekgalovic/tau/protobuf";
-    "github.com/marekgalovic/tau/utils";
+    "github.com/marekgalovic/tau/pkg/math";
+    pb "github.com/marekgalovic/tau/pkg/protobuf";
+    "github.com/marekgalovic/tau/pkg/utils";
 )
 
 type SearchResult []*pb.SearchResultItem

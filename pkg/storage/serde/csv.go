@@ -6,7 +6,7 @@ import (
     "encoding/csv";
     "strconv";
 
-    "github.com/marekgalovic/tau/math";
+    "github.com/marekgalovic/tau/pkg/math";
 )
 
 var csvSeparator []byte = []byte(",")

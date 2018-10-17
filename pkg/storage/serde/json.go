@@ -5,7 +5,7 @@ import (
     "bufio";
     "encoding/json";
 
-    "github.com/marekgalovic/tau/math";
+    "github.com/marekgalovic/tau/pkg/math";
 )
 
 type jsonReader struct {
