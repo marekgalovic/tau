@@ -1,3 +1,6 @@
+## ⚠️ Archived
+Please have a look at [AnnDB](https://github.com/marekgalovic/anndb). AnnDB is a distributed approximate nearest neighbors search database that also supports online data modification.
+
 # TAU
 TAU is a distributed approximate nearest neighbors search library written in GO. Data is organized into datasets that are composed of partitions (individual files). Partitions are distributed across nodes in the cluster and can be replicated for speed and availability.
 
